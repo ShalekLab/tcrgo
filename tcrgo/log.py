@@ -46,18 +46,18 @@ class Log(object):
 		self.script_name = script_name
 		self.logger = logging.getLogger(name)
 
-		# create console handler and set level to debug
+		# Create console handler and set level to debug
 		handler = logging.StreamHandler()
 		self.handler = handler
 		handler.setLevel(logging.DEBUG)
 
-		# create formatter
+		# Create formatter
 		formatter = Formatter()
 		self.formatter = formatter
 
-		# add formatter to ch
+		# Add formatter to handler
 		handler.setFormatter(formatter)
-		# add ch to logger
+		# Add handler to logger
 		self.logger.addHandler(handler)
 		self.logger.setLevel(logging.DEBUG)
 
@@ -89,10 +89,11 @@ class Log(object):
 
 	def fdoc(self, function):
 		"""For processing docstrings for log output"""
-		def fdoc_wrapper(*args, **kwargs):
-			doc_string = function(*args, **kwargs) 
-			return function.__name__ + textwrap.indent(
-				textwrap.dedent(doc_string),
+		def fdoc_wrapper(*args, **kwargs): 
+			return type(function).__name__ + textwrap.indent(
+				textwrap.dedent(
+					function(*args, **kwargs)
+				),
 				prefix='	'*3
 			)
 		return fdoc_wrapper
@@ -121,7 +122,7 @@ class Log(object):
 		self.logger.setLevel(level)
 		self.handler.setLevel(level)
 
-	def initialization(self, level="NOTSET"):
+	def init(self, level="NOTSET"):
 		self.sep('=')
 		format_original = Formatter.info_fmt
 		Formatter.info_fmt = "%(asctime)s - "+self.script_name+": %(msg)s"

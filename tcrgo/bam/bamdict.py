@@ -83,16 +83,17 @@ class BAMDict(object):
 		return queries_VJ, queries_regions
 
 	@log.time		
-	def parse_bam(self, query_names: Set[str], queries_regions: DefaultDict[str, Set[str]]):
+	def parse_bam(self, query_names: Set[str]): #queries_regions: DefaultDict[str, Set[str]]):
 		
 		log.info("Building BAM Index for fetching VJ queries")
 		bam_indexed = pysam.IndexedReads(self.bam)
 		bam_indexed.build()
 		log.info("Built")
 
+		count = 0
 		for query_name in query_names:
 			read = Read(query_name)
-			read.unique_subregions = queries_regions[query_names]
+			#read.unique_subregions = queries_regions[query_names]
 			read.get_alignments(bam_indexed)
 			if read.top_V is None or read.top_J is None:
 				raise Exception("Couldn't get a top V or J for {query_name}")
@@ -101,10 +102,14 @@ class BAMDict(object):
 			barcode = tags["XC"]
 			if barcode not in self:
 				self[barcode] = Barcode(barcode)
-			umi = tags["XM"]
+			umi = tags["XU"]
 			if umi not in self[barcode]:
 				self[barcode][umi] = UMI(umi)
 			self[barcode][umi][query_name] = read
+
+			count += 1
+			if count % 10000 == 0:
+				log.info(f"Processed {count} reads of {len(query_names)}")
 
 	def get_barcode_sequences(self) -> List[str]:
 		return self._keys()

@@ -1,8 +1,10 @@
+
+import os
 import os.path as osp
 import subprocess as sp
 
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set
 import pysam
 BAM = pysam.libcalignmentfile.AlignmentFile
 
@@ -10,26 +12,34 @@ from .log import Log
 log = Log(name=__name__)
 log.proceed()
 
-def sort_and_index(bam: Path) -> Path:
+def sort_and_index(bam: Path, output_path: str) -> Path:
 	"""
-	Given a path to a BAM, sort the BAM if filename does not end with 'Sorted.bam' or
-	'Sort.bam'. Then generate a BAM index (.bai) if it does not exist
+	Given a path to a BAM, sort the BAM if filename does not end with '_sorted.bam'.
+	Output to sorted BAM to output_path and generate a BAM index (.bai) if it does not exist
+	If a sorted BAM already exists at output_path, use that instead
 	"""
-	if not str(bam).endswith(("Sorted.bam", "Sort.bam")):
-		bam_basename = osp.splitext(osp.basename(bam))[0]
-		bam_sorted_name = f"{bam_basename}Sorted.bam"
-		log.info(f"Sorting BAM and creating {bam_sorted_name}")
-		pysam.sort('-@', '4', '-o', bam_sorted_name, str(bam))
-		bam = bam_sorted_name
-	
-	bam_index = f"{bam}.bai"
+	if not osp.exists(output_path):
+		os.mkdir(output_path)
+	bam_basename = osp.splitext(osp.basename(bam))[0]
+	bam_sorted_name = f"{bam_basename}_sorted.bam"
+	bam_sorted_path = osp.join(output_path, bam_sorted_name)
+
+	if str(bam).endswith("_sorted.bam"):
+		bam_sorted_path = str(bam)
+	elif osp.isfile(bam_sorted_path):
+		log.warn("Sorted BAM already found at the output path! Using this BAM instead!")
+	else:
+		log.info(f"Sorting BAM by coordinates, outputting as {bam_sorted_name}")
+		pysam.sort('-@', '4', '-o', bam_sorted_path, str(bam))
+
+	bam_index = f"{bam_sorted_path}.bai"
 	if osp.isfile(bam_index):
 		log.info("BAM index detected.")
 	else:
 		log.info("No index was detected, building index...")
-		pysam.index(bam)
-	
-	return bam
+		pysam.index(bam_sorted_path)
+	log.info(f"Reading {bam_sorted_path}...")
+	return pysam.AlignmentFile(bam_sorted_path, "rb")
 
 def determine_data_filetype(data: List[Path]) -> bool:
 	"""
@@ -67,7 +77,7 @@ def fastq_to_bam(reference: Path, data: List[Path]) -> Path:
 	"""
 
 # TODO: Should this method return Path or BAM?
-def parse_data(data: List[Path]) -> BAM:
+def parse_data(data: List[Path], output_path: Path) -> BAM:
 	"""
 	Read the inputted path(s) to the single-end BAM or paired-end FASTQS
 	and determine the file type. Convert FASTQ to BAM if necessary and
@@ -79,12 +89,25 @@ def parse_data(data: List[Path]) -> BAM:
 	else:
 		log.error("FASTQ TO BAM CURRENTLY NOT SUPPORTED") #TODO
 		#bam = fastq_to_bam(data)
-	bam = sort_and_index(bam)
-	log.info(f"Reading {bam}...")
-	return pysam.AlignmentFile(bam, "rb")
+	bam = sort_and_index(bam, output_path)
+	return bam
 
-def output_queries(queries, workers):
-	pass
+# TODO: consider compressing these files. They can be tens/hundreds of MB
+def output_queries(queries: Set[str], output_path: Path, workers: int):
+	queries = list(queries)
+	p = len(queries) // workers # partition size
+	r = len(queries) % p # remainder
+	for i in range(workers):
+		queries_filename = osp.join(output_path, f"queries{i+1}.txt")
+		if osp.isfile(queries_filename):
+			log.warn(f"Deleting aleady-existing {queries_filename}")
+			os.remove(queries_filename)
+		with open(queries_filename, 'w') as query_list:
+			query_list.write('\n'.join(queries[i*p + min(i, r) : (i+1)*p + min(i+1, r)]))
+
+def input_queries(output_path: Path, worker: int) -> Set[str]:
+	queries_filename = osp.join(output_path, f"queries{worker}.txt")
+	return set(open(queries_filename, 'r').read().splitlines())
 
 def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 	cdr3_positions = {}
@@ -94,27 +117,6 @@ def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 			cdr3_positions[line[0]] = int(line[1])
 	return cdr3_positions
 
-"""
-	log.info("Reading CDR3bases and FASTA files")
-	cdr3_positions = reference.read_cdr3_file(cdr3_file)
-
-	pysam.samtools.faidx(fasta_file)
-	fasta = pysam.FastaFile(fasta_file)
-
-	read.get_cdr3_position(read.top_J, cdr3_positions)
-	read.get_cdr3_position(read.top_V, cdr3_positions)
-
-	J_seq_ref = fasta.fetch(
-		read.top_J.reference_name,
-		read.top_J.reference_start,
-		read.top_J.reference_end
-	)
-	V_seq_ref = fasta.fetch(
-		read.top_V.reference_name,
-		read.top_V.reference_start,
-		read.top_V.reference_end
-	)
-"""
 """
 parser.add_argument(
 		'-r', "--reference-fasta", 

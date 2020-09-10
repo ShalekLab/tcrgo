@@ -1,5 +1,7 @@
 """
-This will be the description of the pipeline. Run using python -m main <args>
+This is the first script of the python pipeline. 
+It is meant to filter reads down to only those which have V and J alignments.
+Run using python -m filter_queries <args>
 
 Requirements:
 	Python 3.8.5, samtools, pysam 
@@ -18,30 +20,32 @@ log = Log(name=__name__)
 
 def main(args):
 
-	log.initialization()
+	log.init(args.verbosity)
 	log.info("Parsing input data...")
-	bam = io.parse_data(args.data)
-	log.info("BAM is opened.")
+	bam = io.parse_data(args.data, args.output_path)
+	log.info("Opened bam.")
 
-	log.info("Fetching queries which contain alignments to V and J")
+	log.info("Fetching queries which contain alignments to V and J...")
 	bamdict = BAMDict(bam)
 	queries_VJ, queries_regions = bamdict.parse_queries()
-	log.info(f"Fetched {len(bamdict.get_reads())} reads.")
+	log.info(f"Fetched {len(queries_VJ)} reads.")
 	bamdict.close()
 
 	# TODO: What are the metrics by which we can filter down the list of queries?
 	def filter_queries(queries_VJ, queries_regions):
 		pass
 	#filtered_queries = filter_queries(queries_VJ, queries_regions)
-	#io.output_queries(filtered_queries, args.output_directory, args.divy_workers)
-
-	log.success("Finished filtering reads!")
-	log.close()
+	#log.info("Finished filtering reads!")
+	#io.output_queries(filtered_queries, args.output_path, args.divy_workers)
+	log.info("Writing filtered queries containing V and J to file.")
+	io.output_queries(queries_VJ, args.output_path, args.workers)
+	
+	log.success("Done!")
 
 if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser(
-		prog="python -m process_barcodes", # Would be good to make a command-line alias and set that here
+		prog="python -m filter_queries", # Would be good to make a command-line alias and set that here
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		description=dedent(
 			f"""
@@ -70,8 +74,8 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-v', "--verbosity", 
 		type=str,
-		default="NOTSET",
-		choices=["VERBOSE", "INFO", "WARNING", "SUCCESS", "ERROR"],
+		default="INFO",
+		choices=["INFO", "VERBOSE", "WARNING", "SUCCESS", "ERROR"],
 		help="The verbosity of the log. (default: %(default)s)."
 	)
 	parser.add_argument(
@@ -83,7 +87,7 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-w', "--workers",
 		type=int,
-		#metavar="#Workers"
+		metavar="#Workers",
 		default=1,
 		help=
 			"Divide the list of filtered reads by this number for processing "

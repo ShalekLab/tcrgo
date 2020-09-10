@@ -22,6 +22,8 @@ class Read(object):
 		self.best_alignment = None
 		self.top_J = None
 		self.top_V = None
+		self.is_TRA = None
+		self.cdr3 = None
 
 	def __len__(self) -> int:
 		return len(self.alignments)
@@ -40,6 +42,7 @@ class Read(object):
 	def get_alignments(self, bam_indexed: IndexedReads):
 		top_score_J = 0
 		top_score_V = 0
+		count = 0
 		for alignment in bam_indexed.find(self.query_name):
 			self.alignments.append(alignment)
 			#self.unique_subregions.add(alignment.reference_name)
@@ -55,9 +58,10 @@ class Read(object):
 					self.top_J = alignment
 					top_score_J = score
 					#log.verbose(f"Top J is now {read.top_J.reference_name} with score={top_score_J}", level=2)
-			if 'B' in alignment.reference_name: # DEBUG
-				log.info(f"FOUND A B!")
-				log.info(self)
+			if 'A' in alignment.reference_name:
+				self.is_TRA = True
+			else: #TRB
+				self.is_TRA = False
 
 	def get_top_subregion_alignment(self, subregion: str) -> AlignedSegment:
 		"""For use with parse_bam1"""
@@ -100,11 +104,12 @@ class Read(object):
 	"""
 	@log.fdoc
 	def __str__(self) -> str:
-		return	f"""
-				QNAME:	{self.query_name}
-				NALIGN:	{len(self.alignments)}
-				SUBREG:	{self.unique_subregions}
-				TOPV:	{self.top_V.reference_name if self.top_V is not None else self.top_V}
-				TOPJ:	{self.top_J.reference_name if self.top_J is not None else self.top_J}
-				"""
+		return \
+			f"""
+			QNAME:	{self.query_name}
+			NALIGN:	{len(self.alignments)}
+			SUBREG:	{self.unique_subregions}
+			TOPV:	{self.top_V.reference_name if self.top_V is not None else self.top_V}
+			TOPJ:	{self.top_J.reference_name if self.top_J is not None else self.top_J}
+			"""
 	
