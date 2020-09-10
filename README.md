@@ -1,5 +1,4 @@
-To run:  
-`python -m main.py -h`  
+Run instructions:  
+`python -m filter_queries -h`  
 Example run command:  
-`python main.py path/to/file.bam`  
-  
+`python -m filter_queries /path/to/file.bam`

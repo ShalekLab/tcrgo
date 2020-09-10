@@ -32,6 +32,14 @@ def main(args):
 	bamdict.close()
 
 	# TODO: What are the metrics by which we can filter down the list of queries?
+	#		MAPQ probably isn't reported for too many reads. Maybe as argparse argument
+	#		QUAL?
+	#		Bowtie2 tags?
+	#		
+	# TODO: Require user do reference sequence similarity checks for subregion variants.
+	# 		We will assume for now dissimilar subregion variants.
+	#		It would be useful to report pairs of regions that frequently appear together
+	#		as alignments of a read.
 	def filter_queries(queries_VJ, queries_regions):
 		pass
 	#filtered_queries = filter_queries(queries_VJ, queries_regions)
@@ -87,7 +95,7 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-w', "--workers",
 		type=int,
-		metavar="#Workers",
+		metavar="#WORKERS",
 		default=1,
 		help=
 			"Divide the list of filtered reads by this number for processing "

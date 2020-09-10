@@ -39,6 +39,8 @@ class Read(object):
 			self.best_alignment = alignment
 		self.alignments.append(alignment)
 
+	# TODO: Report ties for top score and break ties based on
+	#		mapping quality, if same then alphabetical name of region
 	def get_alignments(self, bam_indexed: IndexedReads):
 		top_score_J = 0
 		top_score_V = 0

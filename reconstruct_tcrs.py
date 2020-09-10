@@ -32,7 +32,7 @@ def main(args):
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
 	bamdict.parse_bam(queries)
-	log.info("Finished retrieving top V and J alignments for each query!")
+	log.info("Finished retrieving top V and J alignments for each query.")
 
 	# TODO: Additional filtering?
 
@@ -61,8 +61,6 @@ def main(args):
 		if read.top_J.query_alignment_end - CDR3_end > 0:
 			sequence = seq_ref_V + read.top_V.
 		else:
-
-
 
 	bamdict.close()
 	log.success("Done")
@@ -125,7 +123,7 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-w', "--worker",
 		type=int,
-		metavar="#worker",
+		metavar="#WORKER",
 		default=1,
 		help="The number ID of the worker which will read queries<W>.txt  (default: %(default)d)."
 	)
