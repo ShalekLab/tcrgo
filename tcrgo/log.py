@@ -70,6 +70,8 @@ class Log(object):
 	def warn(self, msg):
 		self.logger.warning(msg)
 
+	# TODO: Seems like ERROR messages reference self.logger.error line...
+	#		EX: (DEV: log, line 74)
 	def error(self, msg):
 		self.logger.error(msg)
 		sys.exit(1)
@@ -77,6 +79,7 @@ class Log(object):
 	def success(self, msg):
 		self.logger.critical(msg)
 		self.close()
+		sys.exit(0)
 
 	def time(self, function):
 		def time_wrapper(*args, **kwargs):
@@ -90,7 +93,7 @@ class Log(object):
 	def fdoc(self, function):
 		"""For processing docstrings for log output"""
 		def fdoc_wrapper(*args, **kwargs): 
-			return type(function).__name__ + textwrap.indent(
+			return "Object" + textwrap.indent(
 				textwrap.dedent(
 					function(*args, **kwargs)
 				),

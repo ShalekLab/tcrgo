@@ -47,7 +47,7 @@ class Barcode(object):
 	def _values(self) -> List[UMI]:
 		return self.umis.values()
 
-	def _items(self) -> List[Tuple[str, UMI]]:
+	def items(self) -> List[Tuple[str, UMI]]:
 		return self.umis.items()
 
 	def get_umi_sequences(self) -> List[str]:

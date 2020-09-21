@@ -1,16 +1,10 @@
-"""
-This is the first script of the python pipeline. 
-It is meant to filter reads down to only those which have V and J alignments.
-Run using python -m filter_queries <args>
+"""A hack for statistical analysis"""
 
-Requirements:
-	Python 3.8.5, samtools, pysam 
-"""
 import argparse
 import os.path as osp
 from textwrap import dedent, indent
+import pysam
 
-from typing import List, Dict, Iterator, Set
 from pathlib import Path
 
 from tcrgo.bam import BAMDict
@@ -25,27 +19,27 @@ def main(args):
 	log.init(args.verbosity)
 	log.info("Parsing input data...")
 	bam = io.parse_data(args.data, args.output_path)
-	log.info("Fetching unique queries which contain alignments to V and J and grouping them by Barcode-UMI...")
-	queries_VJ, queries_nonVJ = io.parse_queries(bam)
-	log.info(f"Fetched {len(queries_VJ)} VJ reads and {len(queries_nonVJ)} non-VJ reads.")
-	bam.close()
 
-	# TODO: Require user do reference sequence similarity checks for subregion variants.
-	# 		We will assume for now dissimilar subregion variants.
-	#		It would be useful to report pairs of regions that frequently appear together
-	#		as alignments of a read.
-	#		Maybe could use pysam.PileUpColumn/PileUp for this?
+	cdr3_positions = io.read_cdr3_file(args.cdr3_positions_file)
+
+	pysam.samtools.faidx(str(args.fasta))
+	fasta = pysam.FastaFile(args.fasta)
+
+	log.info("Parsing all queries into BAM Dict")
+	bamdict = BAMDict(bam)
+	bamdict.parse_queries_full()
+
+	log.info("Writing all unique queries to file.")
+	bamdict.write_reads(fasta, cdr3_positions)
 	
-	log.info("Writing all queries not containing V and J alignments to file.")
-	io.output_nonVJ(queries_nonVJ, args.output_path)
-	log.info("Writing filtered queries containing V and J to file(s).")
-	io.output_VJ_by_id(queries_VJ, args.workers, args.output_path)
+	fasta.close()
+	bamdict.close()
 	log.success("Done!")
 
 if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser(
-		prog="python -m filter_queries", # Would be good to make a command-line alias and set that here
+		prog="python -m statistics", # Would be good to make a command-line alias and set that here
 		usage="",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		description=dedent(
@@ -70,6 +64,20 @@ if __name__ == "__main__":
 		nargs='+',
 		metavar="<BAM or FASTQ_R1 FASTQ_R2>",
 		help="Path to single-end BAM or the paired-end FASTQs"
+	)
+	parser.add_argument(
+		'-f', "--fasta",
+		type=Path,
+		required=True,
+		help="Path to reference FASTA."
+	)
+	parser.add_argument(
+		'-c', "--cdr3-positions-file",
+		type=Path,
+		required=True,
+		help=
+			"Path to a two-column TSV containing reference names "
+			"and the start V or end J base position"
 	)
 
 	# OPTIONAL ARGUMENTS

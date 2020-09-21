@@ -10,6 +10,7 @@ Requirements:
 import argparse
 import os.path as osp
 from textwrap import dedent, indent
+import pysam
 
 from typing import List, Dict, Iterator, Set
 from pathlib import Path
@@ -24,43 +25,31 @@ def main(args):
 	log.init(args.verbosity)
 	log.info("Parsing input data...")
 	bam = io.sort_and_index(args.bam, args.output_path)
-	log.info("Opened bam.")
 	
-	log.info("Fetching filtered queries containing V and J subregions")
-	queries = io.input_queries(args.output_path, args.worker)
+	log.info("Reading filtered queries containing V and J subregions")
+	id_queries = io.read_id_queries(args.output_path, args.worker)
 
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
-	bamdict.parse_bam(queries)
+	bamdict.build(id_queries)
 	log.info("Finished retrieving top V and J alignments for each query.")
+
+	log.info(f"Got {len(bamdict.get_barcodes())} barcode(s), "
+			f"{len(bamdict.get_umis())} UMI(s) and "
+			f"{len(bamdict.get_reads())} reads total")
 
 	# TODO: Additional filtering?
 
 	log.info("Reading CDR3bases and FASTA files")
 	cdr3_positions = io.read_cdr3_file(args.cdr3_positions_file)
 
-	pysam.samtools.faidx(args.fasta)
+	pysam.samtools.faidx(str(args.fasta))
 	fasta = pysam.FastaFile(args.fasta)
 
-	for read in bamdict.get_reads():
-		CDR3_end = read.get_cdr3_position(read.top_J, cdr3_positions)
-		CDR3_start = read.get_cdr3_position(read.top_V, cdr3_positions)
-
-		# TODO: J and V ref start and end actually needed here? Or do we want the whole?
-		seq_ref_J = fasta.fetch(
-			read.top_J.reference_name,
-			read.top_J.reference_start,
-			read.top_J.reference_end
-		)
-		seq_ref_V = fasta.fetch(
-			read.top_V.reference_name,
-			read.top_V.reference_start,
-			read.top_V.reference_end
-		)
-
-		if read.top_J.query_alignment_end - CDR3_end > 0:
-			sequence = seq_ref_V + read.top_V.
-		else:
+	bamdict.reconstruct_cdr3s(fasta, cdr3_positions)
+	
+	log.info("Finished reconstructing CDR3 sequences for all reads")
+	bamdict.cdr3_statistics()
 
 	bamdict.close()
 	log.success("Done")
@@ -68,7 +57,8 @@ def main(args):
 if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser(
-		prog="python -m process_barcodes", # Would be good to make a command-line alias and set that here
+		prog="python -m reconstruct_tcrs", # Would be good to make a command-line alias and set that here
+		usage="",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		description=dedent(
 			f"""

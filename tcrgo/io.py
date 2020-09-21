@@ -1,12 +1,14 @@
-
 import os
 import os.path as osp
 import subprocess as sp
+import re
 
 from pathlib import Path
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, DefaultDict, Deque
 import pysam
 BAM = pysam.libcalignmentfile.AlignmentFile
+AlignedSegment = pysam.libcalignedsegment.AlignedSegment
+from collections import Counter, deque, defaultdict
 
 from .log import Log
 log = Log(name=__name__)
@@ -92,7 +94,132 @@ def parse_data(data: List[Path], output_path: Path) -> BAM:
 	bam = sort_and_index(bam, output_path)
 	return bam
 
+@log.time
+def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
+	"""
+	Parses BAM line by line and finds intersection of queries containing V 
+	and queries containing J. Stores these queries as
+	'Barcode_seq|UMI_seq|QNAME'
+	"""
+	queries_V = set()
+	queries_J = set()
+	queries_all = set()
+	for alignment in bam.fetch():
+		barcode = alignment.get_tag("XC")
+		umi = alignment.get_tag("XU")
+		#tags = dict(alignment.get_tags)
+		#barcode = tags["XC"]
+		#umi = tags["XU"]
+		id_query = f"{barcode}|{umi}|{alignment.query_name}"
+		queries_all.add(id_query) # The tags block would have to be moved up here!
+		if alignment.is_unmapped:
+			continue
+		if "TRAV" in alignment.reference_name or "TRBV" in alignment.reference_name:
+			query_set = queries_V
+		elif "TRAJ" in alignment.reference_name or "TRBJ" in alignment.reference_name:
+			query_set = queries_J
+		else:
+			continue
+		query_set.add(id_query)
+	queries_VJ = queries_V & queries_J
+	queries_nonVJ = queries_all - queries_VJ
+	return queries_VJ, queries_nonVJ
+
+def split_to_dict(queries_VJ: Set[str]) -> Dict[str, List[str]]:
+	id_queries = defaultdict(list)
+	for id_query in queries_VJ:
+		barcode_umi = '|'.join(id_query.split('|')[:2])
+		id_queries[barcode_umi].append(id_query)
+	return id_queries
+
+def get_partition_reads(w: int, workers:int, max_size: int, id_queries: DefaultDict[str, List[str]],
+						ids_sorted: Deque[str], id_querycounts: Dict[str, int]) -> List[str]:
+	LEFT = 0 # Index of current maximum in ids_sorted
+	RIGHT = -1 # Index of current minimum in ids_sorted
+	to_write = []
+	count = 0
+	# TODO: Consider adding: `or # remaining reads < max_size/10`
+	if w == workers - 1: # If the last file, just write whatever remains.
+		while ids_sorted:
+			count += id_querycounts[ids_sorted[LEFT]]
+			to_write += id_queries[ids_sorted[LEFT]]
+			ids_sorted.popleft()
+	elif id_querycounts[ids_sorted[LEFT]] >= max_size:
+		log.info(f"Sole Barcode|UMI {ids_sorted[LEFT]} of {id_querycounts[ids_sorted[LEFT]]} "
+				f"unique reads exceeds max partition size {max_size}.")
+		log.warn("Be aware that fewer files may be outputted as a result!")
+		count += id_querycounts[ids_sorted[LEFT]]
+		to_write += id_queries[ids_sorted[LEFT]]
+		ids_sorted.popleft()
+	else: # current max doesn't meet or exceed max_size, let's prioritize fitting UMIs with higher counts.
+		while ids_sorted:
+			if id_querycounts[ids_sorted[LEFT]] <= max_size - count:
+				count += id_querycounts[ids_sorted[LEFT]]
+				to_write += id_queries[ids_sorted[LEFT]]
+				ids_sorted.popleft()
+			elif id_querycounts[ids_sorted[RIGHT]] <= max_size - count:
+				count += id_querycounts[ids_sorted[RIGHT]]
+				to_write += id_queries[ids_sorted[RIGHT]]
+				ids_sorted.pop()
+			else: # No more UMIs can fit into max_size
+				break
+	return to_write
+
 # TODO: consider compressing these files. They can be tens/hundreds of MB
+@log.time
+def output_VJ_by_id(id_queries: Set[str], workers: int,  output_path: Path):
+	id_queries = split_to_dict(id_queries) # Split by delim '|' to convert to dictionary of BC|UMI : QNAME
+	id_querycounts = {k:len(v) for k,v in id_queries.items()} # Convert each value from list to len(list)
+	ids_sorted = deque([k for k,v in sorted(id_querycounts.items(), key=lambda item: item[1], reverse=True)]) # Sort keys in descending order
+	
+	num_queries = sum(id_querycounts.values())
+	partition_size = num_queries // workers
+	remainder = num_queries % partition_size
+	max_size = partition_size + remainder
+	log.info(
+		f"Distributing {num_queries} values belonging to {len(ids_sorted)} "
+		f"Barcode-UMI pairs somewhat evenly across {workers} files."
+	)
+	log.sep('-', width=50)
+
+	for w in range(workers):	
+		queries_filename = osp.join(output_path, f"queries{w+1}.txt")
+		if not ids_sorted:
+			log.warn(f"No reads remain, not writing file '{queries_filename}'!")
+			continue
+		if osp.isfile(queries_filename):
+			log.warn(f"Deleting aleady-existing {queries_filename}")
+			os.remove(queries_filename)
+		to_write = get_partition_reads(w, workers, max_size, id_queries, ids_sorted, id_querycounts)
+		with open(queries_filename, 'w') as query_list:
+			query_list.write('\n'.join(to_write)+'\n')
+		log.info(f"Wrote {len(to_write)} unique reads to file {w+1}")
+		log.sep("-", width=50)
+	if ids_sorted:
+		log.error(f"Ended with {len(ids_sorted)} still left!")
+
+def output_nonVJ(queries_nonVJ: Set[str], output_path: Path):
+	filename = osp.join(output_path, f"queries_nonVJ.txt")
+	with open(filename, 'w') as nonVJ_file:
+		nonVJ_file.write('\n'.join(queries_nonVJ)+'\n')
+
+def read_id_queries(output_path: Path, worker: int) -> List[str]:
+	queries_filename = osp.join(output_path, f"queries{worker}.txt")
+	log.info(f"Reading {queries_filename}.")
+	return open(queries_filename, 'r').read().splitlines()
+
+def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
+	cdr3_positions = {}
+	with open(cdr3_file, 'r') as cdr3_file:
+		for line in cdr3_file:
+			line = line.strip().split('\t')
+			cdr3_positions[line[0]] = int(line[1])
+	return cdr3_positions
+
+###################################################################################
+#	Deprecated
+###################################################################################
+
 def output_queries(queries: Set[str], output_path: Path, workers: int):
 	queries = list(queries)
 	p = len(queries) // workers # partition size
@@ -104,25 +231,3 @@ def output_queries(queries: Set[str], output_path: Path, workers: int):
 			os.remove(queries_filename)
 		with open(queries_filename, 'w') as query_list:
 			query_list.write('\n'.join(queries[i*p + min(i, r) : (i+1)*p + min(i+1, r)]))
-
-def input_queries(output_path: Path, worker: int) -> Set[str]:
-	queries_filename = osp.join(output_path, f"queries{worker}.txt")
-	return set(open(queries_filename, 'r').read().splitlines())
-
-def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
-	cdr3_positions = {}
-	with open(cdr3_file, 'r') as cdr3_file:
-		for line in cdr3_file:
-			line = line.strip().split('\t')
-			cdr3_positions[line[0]] = int(line[1])
-	return cdr3_positions
-
-"""
-parser.add_argument(
-		'-r', "--reference-fasta", 
-		#type=argparse.FileType('r', encoding='UTF-8'),
-		type=Path,
-		required=False,
-		help="Path to reference FASTA. Required."
-	)
-"""
