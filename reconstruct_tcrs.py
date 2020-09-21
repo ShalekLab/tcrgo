@@ -39,6 +39,10 @@ def main(args):
 			f"{len(bamdict.get_reads())} reads total")
 
 	# TODO: Additional filtering?
+	log.info(f"{len(bamdict.get_umis())}")
+	for umi in bamdict.get_umis():
+		umi.count_top_VJ()
+		umi.count_top_VJ_by_alignments()
 
 	log.info("Reading CDR3bases and FASTA files")
 	cdr3_positions = io.read_cdr3_file(args.cdr3_positions_file)

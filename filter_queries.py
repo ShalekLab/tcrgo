@@ -38,8 +38,11 @@ def main(args):
 	
 	log.info("Writing all queries not containing V and J alignments to file.")
 	io.output_nonVJ(queries_nonVJ, args.output_path)
-	log.info("Writing filtered queries containing V and J to file(s).")
-	io.output_VJ_by_id(queries_VJ, args.workers, args.output_path)
+	log.info(f"Filtering out UMIs with VJ below {args.minimum_reads} reads and randomly "
+			f"subsampling those with reads exceeding {args.maximum_reads} reads.")
+	log.info(f"Will be writing filtered queries containing V and J to {args.workers} file(s).")
+	id_queries = io.filter_queries(queries_VJ, args.minimum_reads, args.maximum_reads) # Split by delim '|' to convert to dictionary of BC|UMI : QNAME
+	io.output_grouped_VJ_queries(id_queries, args.workers, args.output_path)
 	log.success("Done!")
 
 if __name__ == "__main__":
@@ -79,6 +82,20 @@ if __name__ == "__main__":
 		default="INFO",
 		choices=["INFO", "VERBOSE", "WARNING", "SUCCESS", "ERROR"],
 		help="The verbosity of the log. (default: %(default)s)."
+	)
+	parser.add_argument(
+		'-lt', "--minimum_reads",
+		type=int,
+		default=5,
+		help="UMIs with less than the minimum number of reads will be filtered out (default: %(default)d)."
+	)
+	parser.add_argument(
+		'-gt', "--maximum_reads",
+		type=int,
+		default=1000,
+		help=
+			"UMIs with more than the maximum number of reads will have their reads"
+			"randomly subsampled down to the maximum (default: %(default)d)."
 	)
 	parser.add_argument(
 		'-o', "--output-path", 

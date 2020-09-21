@@ -2,6 +2,7 @@ import os
 import os.path as osp
 import subprocess as sp
 import re
+import random
 
 from pathlib import Path
 from typing import List, Tuple, Dict, Set, DefaultDict, Deque
@@ -104,15 +105,14 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 	queries_V = set()
 	queries_J = set()
 	queries_all = set()
+	count_unmapped = 0
 	for alignment in bam.fetch():
 		barcode = alignment.get_tag("XC")
 		umi = alignment.get_tag("XU")
-		#tags = dict(alignment.get_tags)
-		#barcode = tags["XC"]
-		#umi = tags["XU"]
 		id_query = f"{barcode}|{umi}|{alignment.query_name}"
-		queries_all.add(id_query) # The tags block would have to be moved up here!
+		queries_all.add(id_query)
 		if alignment.is_unmapped:
+			count_unmapped += 1
 			continue
 		if "TRAV" in alignment.reference_name or "TRBV" in alignment.reference_name:
 			query_set = queries_V
@@ -121,18 +121,29 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 		else:
 			continue
 		query_set.add(id_query)
+	log.info(f"Found and ignored {count_unmapped} unmapped reads.")
 	queries_VJ = queries_V & queries_J
 	queries_nonVJ = queries_all - queries_VJ
 	return queries_VJ, queries_nonVJ
 
-def split_to_dict(queries_VJ: Set[str]) -> Dict[str, List[str]]:
+def filter_queries(queries_VJ: Set[str], num_queries_min: int, num_queries_max: int) -> DefaultDict[str, List[str]]:
 	id_queries = defaultdict(list)
 	for id_query in queries_VJ:
 		barcode_umi = '|'.join(id_query.split('|')[:2])
 		id_queries[barcode_umi].append(id_query)
+	ids_to_drop = list()
+	for barcode_umi, queries in id_queries.items():
+		num_queries = len(queries)
+		if num_queries < num_queries_min:
+			ids_to_drop.append(barcode_umi)
+		elif num_queries > num_queries_max:
+			id_queries[barcode_umi] = random.sample(queries, num_queries_max)
+	log.info(f"Dropping {len(ids_to_drop)} queries below the minimum threshold")
+	for barcode_umi in ids_to_drop:
+		del id_queries[barcode_umi]
 	return id_queries
 
-def get_partition_reads(w: int, workers:int, max_size: int, id_queries: DefaultDict[str, List[str]],
+def get_partition_queries(w: int, workers:int, max_size: int, id_queries: DefaultDict[str, List[str]],
 						ids_sorted: Deque[str], id_querycounts: Dict[str, int]) -> List[str]:
 	LEFT = 0 # Index of current maximum in ids_sorted
 	RIGHT = -1 # Index of current minimum in ids_sorted
@@ -167,8 +178,7 @@ def get_partition_reads(w: int, workers:int, max_size: int, id_queries: DefaultD
 
 # TODO: consider compressing these files. They can be tens/hundreds of MB
 @log.time
-def output_VJ_by_id(id_queries: Set[str], workers: int,  output_path: Path):
-	id_queries = split_to_dict(id_queries) # Split by delim '|' to convert to dictionary of BC|UMI : QNAME
+def output_grouped_VJ_queries(id_queries: DefaultDict[str, List[str]], workers: int, output_path: Path):
 	id_querycounts = {k:len(v) for k,v in id_queries.items()} # Convert each value from list to len(list)
 	ids_sorted = deque([k for k,v in sorted(id_querycounts.items(), key=lambda item: item[1], reverse=True)]) # Sort keys in descending order
 	
@@ -176,10 +186,8 @@ def output_VJ_by_id(id_queries: Set[str], workers: int,  output_path: Path):
 	partition_size = num_queries // workers
 	remainder = num_queries % partition_size
 	max_size = partition_size + remainder
-	log.info(
-		f"Distributing {num_queries} values belonging to {len(ids_sorted)} "
-		f"Barcode-UMI pairs somewhat evenly across {workers} files."
-	)
+	log.info(f"Distributing {num_queries} values belonging to {len(ids_sorted)} "
+			f"Barcode-UMI pairs somewhat evenly across {workers} files.")
 	log.sep('-', width=50)
 
 	for w in range(workers):	
@@ -190,7 +198,7 @@ def output_VJ_by_id(id_queries: Set[str], workers: int,  output_path: Path):
 		if osp.isfile(queries_filename):
 			log.warn(f"Deleting aleady-existing {queries_filename}")
 			os.remove(queries_filename)
-		to_write = get_partition_reads(w, workers, max_size, id_queries, ids_sorted, id_querycounts)
+		to_write = get_partition_queries(w, workers, max_size, id_queries, ids_sorted, id_querycounts)
 		with open(queries_filename, 'w') as query_list:
 			query_list.write('\n'.join(to_write)+'\n')
 		log.info(f"Wrote {len(to_write)} unique reads to file {w+1}")

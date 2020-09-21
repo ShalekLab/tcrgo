@@ -10,14 +10,15 @@ Requirements:
 import argparse
 
 def main(args):
-file.write(
-	"BC_index\tUMI_index\tBC\tUMI\tnReads\t"
-	"topV_region\ttopV_nReads\ttopV_freq\t"
-	"topJ_region\ttopJ_nReads\ttopJ_freq\t
-	"CDR3_nuc\tCDR3_nReads\tCDR3_freq\t"
-	"TRAV_nReads\tTRAJ_nReads\tTRAC_nReads\t"
-	"TRBV_nReads\tTRBJ_nReads\tTRBC_nReads\t\n"
-)
+	pass
+	file.write(
+		"BC_index\tUMI_index\tBC\tUMI\tnReads\t"
+		"topV_region\ttopV_nReads\ttopV_freq\t"
+		"topJ_region\ttopJ_nReads\ttopJ_freq\t
+		"CDR3_nuc\tCDR3_nReads\tCDR3_freq\t"
+		"TRAV_nReads\tTRAJ_nReads\tTRAC_nReads\t"
+		"TRBV_nReads\tTRBJ_nReads\tTRBC_nReads\t\n"
+	)
 
 if __name__ == "__main__":
 

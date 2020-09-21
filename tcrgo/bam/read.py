@@ -19,23 +19,25 @@ log.proceed()
 class Read(object):
 	def __init__(self, query_name: str):
 		self.query_name = query_name
-		#self.unique_subregions = set()
+		self.unique_subregions = set()
 		self.alignments = list()
 		self.top_J = None
 		self.top_V = None
 		#self.top_index_V = -1
 		#self.top_index_J = -1
 		self.is_TRA = None
+		self.cdr3 = None
+		self.cdr3_status = "NON"
+		self.has_region = defaultdict(bool)
+		self.ties = Counter()
+		# TODO: Consider getting rid of these and finding
+		# way to reconfigure VJ_alignment_stats+_diagram
 		self.ref_cdr3_start = None
 		self.query_cdr3_start = None
 		self.ref_cdr3_end = None
 		self.query_cdr3_end = None
 		self.ref_seq_J = ""
 		self.ref_seq_V = ""
-		self.cdr3 = None
-		self.cdr3_status = "NON"
-		self.has_region = defaultdict(bool)
-		self.ties = Counter()
 
 	def __len__(self) -> int:
 		return len(self.alignments)
@@ -66,6 +68,7 @@ class Read(object):
 			"""
 
 	# TODO: Refine tie-breaking conditions
+	# TODO: Output the tiebreak info as a file
 	def tie_break(self, top_alignment: AlignedSegment, alignment: AlignedSegment) -> AlignedSegment:
 		if alignment.get_tag("NM") < top_alignment.get_tag("NM"): # Edit Distance
 			winner = alignment
@@ -87,7 +90,7 @@ class Read(object):
 		top_score_V = 0
 		for alignment in bam_indexed.find(self.query_name):
 			self.alignments.append(alignment)
-			#self.unique_subregions.add(alignment.reference_name)
+			self.unique_subregions.add(alignment.reference_name)
 			for v in ("TRAV", "TRBV"):
 				if v in alignment.reference_name:
 					self.has_region[v] = True

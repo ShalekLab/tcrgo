@@ -20,14 +20,16 @@ class UMI(object):
 	def __init__(self, sequence: str):
 		self.sequence = sequence
 		self.reads = dict()
-		self.subregion_counts = Counter()
+		self.counts_region = Counter()
+		self.counts_top_V = Counter()
+		self.counts_top_J = Counter()
+		self.counts_top_VJ = Counter()
 		self.cdr3 =  None
-		#self.has_complete_cdr3 = False
-		#self.count_AV = Counter()
-		#self.count_AJ = Counter()
-		#self.count_BV = Counter()
-		#self.count_BJ = Counter()
-		#self.unique_cdr3 = set()
+		self.is_complete_cdr3 = False
+		self.top_V = None
+		self.top_J = None
+		self.reads_top_V = dict()
+		self.reads_top_J = dict()
 
 	def __len__(self) -> int:
 		return len(self.reads)
@@ -63,7 +65,7 @@ class UMI(object):
 		return self._keys()
 
 	def get_reads(self) -> List[Read]:
-		return self._values()
+		return self._values() 
 
 	def cdr3_statistics(self):
 		count_complete = 0
@@ -71,58 +73,124 @@ class UMI(object):
 		count_total = 0
 		log.info(f"UMI {self.sequence}, gathering CDR3 statistics")
 		for read in self.get_reads():
-			if read.cdr3_status is "COM":
+			if read.cdr3_status == "COM":
 				count_complete += 1
-			elif read.cdr3_status is "INC":
+			elif read.cdr3_status == "INC":
 				count_incomplete += 1
 			count_total += 1
-			log.verbose(read.cdr3)
+			#log.verbose(read.cdr3)
 		log.verbose(
 			f"For {self.sequence} got {count_complete} complete and "
 			f"{count_incomplete} incomplete of {count_total} reads."
 		)
 
-	def count_subregions(self):
+	@log.time
+	def count_top_VJ_by_alignments(self):
+		log.info("We in this by alignments")
+		self.counts_top_V = Counter()
+		self.counts_top_J = Counter()
+		count_total_J = 0
+		count_total_V = 0
+		for read in self.get_reads():
+			for subregion in read.unique_subregions:
+				if "TRAV" in subregion or "TRBV" in subregion:
+					self.counts_top_V[read.top_V.reference_name] += 1
+					count_total_V += 1
+				elif "TRAJ" in subregion or "TRBJ" in subregion:
+					self.counts_top_J[read.top_J.reference_name] += 1
+					count_total_J += 1
+				
+		top_V = max(self.counts_top_V, key=self.counts_top_V.get)
+		top_J = max(self.counts_top_J, key=self.counts_top_J.get)
+		
+		frequency_top_V = self.counts_top_V[top_V] / count_total_V
+		frequency_top_J = self.counts_top_J[top_J] / count_total_J
+		
+		log.info(f"{self.counts_top_V=}")
+		log.verbose(f"{top_V=} {frequency_top_V=}")
+		log.info(f"{self.counts_top_J=}")
+		log.verbose(f"{top_J=} {frequency_top_J=}")
+		log.info(f"{count_total_V=} {count_total_J=}")
+
+	@log.time
+	def count_top_VJ(self):
+		log.info("We in this")
+		self.counts_top_V = Counter()
+		self.counts_top_J = Counter()
+		self.counts_top_VJ = Counter()
+		for read in self.get_reads():
+			self.counts_top_V[read.top_V.reference_name] += 1
+			self.counts_top_J[read.top_J.reference_name] += 1
+			self.counts_top_VJ[f"{read.top_V.reference_name}:{read.top_J.reference_name}"] += 1
+		top_V = max(self.counts_top_V, key=self.counts_top_V.get)
+		top_J = max(self.counts_top_J, key=self.counts_top_J.get)
+		top_VJ = max(self.counts_top_VJ, key=self.counts_top_VJ.get)
+		
+		count_total = sum(self.counts_top_V.values())
+		frequency_top_V = self.counts_top_V[top_V] / count_total
+		frequency_top_J = self.counts_top_J[top_J] / count_total
+		frequency_top_VJ = self.counts_top_VJ[top_VJ] / count_total
+		
+		log.info(f"{self.counts_top_V=}")
+		log.verbose(f"{top_V=} {frequency_top_V=}")
+		log.info(f"{self.counts_top_J=}")
+		log.verbose(f"{top_J=} {frequency_top_J=}")
+		log.info(f"{self.counts_top_VJ=}")
+		log.verbose(f"{top_VJ=} {frequency_top_VJ=}")
+		log.info(f"{count_total=}")
+
+	@log.time
+	def count_regions(self):
 		for read in self.get_reads():
 			for subregion in ("TRAV", "TRAJ", "TRAC", "TRBV", "TRBJ", "TRBC", "UNKN"):
 				if read.has_region[subregion]:
-					self.subregion_counts[subregion] += 1
+					self.counts_region[subregion] += 1
 
+	@log.time
 	def resolve_tcr_identity(self):
 		"""
 		Figures out the V, J, and CDR3 consensus sequences for the UMI
 		TODO: Currently only considers NT, not AA sequence.
 		TODO: Unfinished
 		"""
-		has_complete_cdr3 = False
 		for read in self.get_reads():
 			if read.cdr3_status == "COM":
-				has_complete_cdr3 = True
+				self.is_complete_cdr3 = True # We'll drop incompletes
 				break
-
+		
 		cdr3_counter = Counter()
 		for read in self.get_reads():
-			if has_complete_cdr3 and read.cdr3_status != "COM":
+			if self.is_complete_cdr3 and read.cdr3_status != "COM":
 				continue
 			elif read.cdr3:
 				cdr3_counter[read.cdr3] += 1
+		
 		top_cdr3 = []
-		curmax = 0
+		max_count = 0
 		for cdr3, count in cdr3_counter.items():
 			if not top_cdr3:
 				top_cdr3.append(cdr3)
-				curmax = count
-			elif count == curmax:
-				top_cdr3.append(cdr3)
-			elif count > curmax:
+				max_count = count
+			elif count > max_count:
 				top_cdr3 = [cdr3]
-				curmax = count
-
+				max_count = count
+			elif count == max_count:
+				top_cdr3.append(cdr3)
+		if len(top_cdr3) > 1:
+			log.verbose(f"We have a CDR3 tie of count {max_count} among {','.join(top_cdr3)}")
+			#TODO: Resolve ties via consensus sequence?
+		top_cdr3 = top_cdr3[0]
+		
+		''' TODO: Hamming variants
 		cdr3_candidates = []
 		for cdr3 in cdr3_counter.keys():
 			if len(cdr3) == len(top_cdr3):
+		'''
 
-
+		if not self.is_complete_cdr3:
+			top_cdr3 += '_'
+		self.cdr3 = top_cdr3
+			
 	""" # This was a more general approach
 	def count_subregions(self):
 		for read in self.get_reads():
@@ -169,7 +237,7 @@ class UMI(object):
 		"""DEPRECATED."""
 		to_delete = []
 		for read in self:
-			if len(read) is 1:
+			if len(read) == 1:
 				log.verbose(f"Deleting {read.query_name}")
 				to_delete.append(read)
 		for read in to_delete:
