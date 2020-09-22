@@ -38,23 +38,25 @@ def main(args):
 			f"{len(bamdict.get_umis())} UMI(s) and "
 			f"{len(bamdict.get_reads())} reads total")
 
-	# TODO: Additional filtering?
-	log.info(f"{len(bamdict.get_umis())}")
-	for umi in bamdict.get_umis():
-		umi.count_top_VJ()
-		umi.count_top_VJ_by_alignments()
-
-	log.info("Reading CDR3bases and FASTA files")
+	log.info("Reading CDR3 positions file and FASTA file...")
 	cdr3_positions = io.read_cdr3_file(args.cdr3_positions_file)
-
 	pysam.samtools.faidx(str(args.fasta))
 	fasta = pysam.FastaFile(args.fasta)
 
-	bamdict.reconstruct_cdr3s(fasta, cdr3_positions)
+	log.info(f"{len(bamdict.get_umis())}")
+	for umi in bamdict.get_umis():
+		umi.count_regions()
+		umi.find_top_VJ()
+		if umi.frequency_top_VJ >= args.minimum_frequency:
+			for read in umi.reads_top_VJ:
+				read.get_cdr3_positions(cdr3_positions)
+				read.ref_seq_V = fasta.fetch(read.top_V.reference_name)
+				read.ref_seq_J = fasta.fetch(read.top_J.reference_name)
+				read.get_cdr3_sequence()
+			umi.resolve_tcr_identity()
 	
 	log.info("Finished reconstructing CDR3 sequences for all reads")
-	bamdict.cdr3_statistics()
-
+	bamdict.write_cdr3_info(args.worker, args.output_path)
 	bamdict.close()
 	log.success("Done")
 
@@ -102,6 +104,30 @@ if __name__ == "__main__":
 	)
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(
+		'-w', "--worker",
+		type=int,
+		metavar="#WORKER",
+		default=1,
+		help="The number ID of the worker which will read queries<W>.txt  (default: %(default)d)."
+	)
+	parser.add_argument(
+		'-m', "--minimum_frequency",
+		type=float,
+		default=0.3,
+		help=
+			"UMIs whose top VJ combination frequency is beneath the minimum frequency "
+			"will not undergo CDR3 sequence reconstruction (default: %(default)d)."
+	)
+	# TODO: Implement
+	parser.add_argument(
+		'-s', "--second-pass",
+		action="store_true",
+		help=
+			"After a top VJ combination is found, revisit non-top-VJ-combination reads "
+			"to reclaim for CDR3 reconstruction reads which have primary OR high-scoring " 
+			"secondary alignments to top V and J."
+	)
+	parser.add_argument(
 		'-v', "--verbosity", 
 		type=str,
 		default="INFO",
@@ -113,13 +139,6 @@ if __name__ == "__main__":
 		type=Path,
 		default="./tcrgo_out",
 		help="The path to which the files from this program will output. (default: %(default)s )."
-	)
-	parser.add_argument(
-		'-w', "--worker",
-		type=int,
-		metavar="#WORKER",
-		default=1,
-		help="The number ID of the worker which will read queries<W>.txt  (default: %(default)d)."
 	)
 	args = parser.parse_args()
 	main(args)

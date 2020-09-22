@@ -5,20 +5,29 @@ and summarize the information
 Run using python -m summary <args>
 
 Requirements:
-	Python 3.8.5, samtools, pysam
+	Python 3.8.5, samtools, pysam, pandas
 """
 import argparse
+from pathlib import Path
+import tcrgo.io as io
+from textwrap import dedent, indent
+
+from tcrgo import Log
+log = Log(name=__name__)
 
 def main(args):
-	pass
-	file.write(
-		"BC_index\tUMI_index\tBC\tUMI\tnReads\t"
-		"topV_region\ttopV_nReads\ttopV_freq\t"
-		"topJ_region\ttopJ_nReads\ttopJ_freq\t
-		"CDR3_nuc\tCDR3_nReads\tCDR3_freq\t"
-		"TRAV_nReads\tTRAJ_nReads\tTRAC_nReads\t"
-		"TRBV_nReads\tTRBJ_nReads\tTRBC_nReads\t\n"
-	)
+	worker_range = [int(i) for i in args.workers.strip(':').split(':')]
+	if worker_range[0] < 1:
+		log.error("Please enter positive value for the start of the range.")
+	if len(worker_range) > 1:
+		worker_range = range(worker_range[0], worker_range[-1]+1)
+	else:
+		worker_range = range(1, worker_range[-1]+1)
+
+	io.read_cdr3_info(worker_range, args.input_path, args.output_path)
+	#io.concatenate_cdr3_info()
+
+	#barcode_umi_counts = reads.groupby(['Barcode', 'UMI']).size().reset_index().rename(columns={0:'count'})
 
 if __name__ == "__main__":
 
@@ -42,11 +51,12 @@ if __name__ == "__main__":
 		)
 	)
 	# REQUIRED ARGUMENTS
+	# TODO: Perhaps make optional and autocollect all from input_directory
 	parser.add_argument(
-		"input_directory",
-		metavar="INPUT_DIRECTORY",
-		type=Path,
-		help="Path to folder containing files outputted by reconstruct_tcrs."
+		"workers",
+		type=str,
+		metavar="<NUMWORKERS or NUMFIRST:NUMLAST>",
+		help="The number or range [NUMFIRST, NUMLAST] of reconstruct_tcrs text files to be concatenated for summary"
 	)
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(
@@ -56,22 +66,18 @@ if __name__ == "__main__":
 		choices=["INFO", "VERBOSE", "WARNING", "SUCCESS", "ERROR"],
 		help="The verbosity of the log. (default: %(default)s)."
 	)
+	parser.add_argument(
+		'-i', "--input-path",
+		type=Path,
+		default="./tcrgo_out/",
+		help="Path to folder containing files outputted by reconstruct_tcrs.py (default: %(default)s)."
+	)
 	# TODO: change this
 	parser.add_argument(
 		'-o', "--output-path", 
 		type=Path,
-		default="./tcrgo_out",
-		help="The path to which the files from this program will output. (default: %(default)s )."
-	)
-	# TODO: Handle this later
-	parser.add_argument(
-		'-w', "--workers",
-		type=str,
-		metavar="NUMFIRST:NUMLAST",
-		default="ALL",
-		help=\
-			"The range of reconstruct_tcrs text files to be summarized summary (default: %(default)d)."
-			"If not entered, all text files in INPUT_DIRECTORY will be collected for summary."
+		default="./tcrgo_out/",
+		help="The path to which the files from this program will output (default: %(default)s )."
 	)
 	args = parser.parse_args()
 	main(args)

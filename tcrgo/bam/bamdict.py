@@ -3,6 +3,10 @@
 #from collections import UserList, UserDict
 import pysam
 import textwrap
+import os
+import os.path as osp
+
+from pathlib import Path
 from typing import List, Dict, Iterator, Set, Tuple, DefaultDict
 IndexedReads = pysam.libcalignmentfile.IndexedReads
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
@@ -23,7 +27,7 @@ class BAMDict(object):
 	"""
 	
 	def __init__(self, bam: BAM):
-		self.barcodes = {}
+		self.barcodes = dict()
 		self.bam = bam
 
 	def __len__(self) -> int:
@@ -100,11 +104,12 @@ class BAMDict(object):
 
 	@log.time
 	def build(self, id_queries: List[str]):
-		log.info("Building BAM Index for fetching VJ queries")
+		log.info("Building BAM Index in memory for fetching VJ queries")
 		bam_indexed = pysam.IndexedReads(self.bam)
 		bam_indexed.build()
 		log.info("Built index in memory for fast retrieval")
 		count = 0
+		count_interval = len(id_queries) // 20
 		for id_query in id_queries:
 			barcode, umi, query_name = id_query.split('|') 
 			read = Read(query_name)
@@ -117,7 +122,7 @@ class BAMDict(object):
 				self[barcode][umi] = UMI(umi)
 			self[barcode][umi][query_name] = read
 			count += 1
-			if count % 10000 == 0:
+			if count % count_interval == 0:
 				log.info(f"Processed {count} reads of {len(id_queries)}")
 	
 	# TODO: Move to Read file, adjust, and call for each read from reconstruct_tcrs instead
@@ -133,6 +138,36 @@ class BAMDict(object):
 	def cdr3_statistics(self):
 		for umi in self.get_umis():
 			umi.cdr3_statistics()
+
+	@log.time
+	def write_cdr3_info(self, worker: int, output_path: Path):
+		cdr3_info_filename = osp.join(output_path, f"cdr3_info{worker}.tsv")
+		if osp.isfile(cdr3_info_filename):
+			log.warn(f"Deleting aleady-existing {cdr3_info_filename}")
+			os.remove(cdr3_info_filename)
+		with open(cdr3_info_filename, 'a') as cdr3_info:
+			cdr3_info.write(
+				"BC_index\tUMI_index\tBC\tUMI\tnReads\t"
+				"topVJ_region\ttopVJ_nReads\ttopVJ_freq\t"
+				"CDR3_nuc\tCDR3_nReads\tCDR3_freq\t"
+				"TRAV_nReads\tTRAJ_nReads\tTRAC_nReads\t"
+				"TRBV_nReads\tTRBJ_nReads\tTRBC_nReads\t"
+				"UNKN_nReads\n"
+			)
+			b = 0
+			for barcode_seq, barcode in self.items():
+				u = 0
+				b += 1
+				for umi_seq, umi in barcode.items():
+					u += 1
+					cdr3_info.write(
+						f"{b}\t{u}\t{barcode_seq}\t{umi_seq}\t{len(umi)}\t"
+						f"{umi.top_VJ}\t{umi.count_top_VJ}\t{umi.frequency_top_VJ}\t"
+						f"{umi.top_cdr3}\t{umi.count_top_cdr3}\t{umi.frequency_top_cdr3}\t"
+						f"{umi.counts_region['TRAV']}\t{umi.counts_region['TRAJ']}\t{umi.counts_region['TRAC']}\t"
+						f"{umi.counts_region['TRBV']}\t{umi.counts_region['TRBJ']}\t{umi.counts_region['TRBC']}\t"
+						f"{umi.counts_region['UNKN']}\n"
+					)
 
 	#########################################################################
 	#	Below is hacky, deprecated code that will be removed eventually
@@ -244,6 +279,7 @@ class BAMDict(object):
 			count += 1 
 			if count % 100000 == 0:
 				log.info(f"Parsed {count} of {total_reads} reads.")
+
 
 	@log.time
 	def write_reads(self, fasta: FASTA, cdr3_positions: Dict[str, int]):

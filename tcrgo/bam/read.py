@@ -27,7 +27,7 @@ class Read(object):
 		#self.top_index_J = -1
 		self.is_TRA = None
 		self.cdr3 = None
-		self.cdr3_status = "NON"
+		self.is_complete_cdr3 = False
 		self.has_region = defaultdict(bool)
 		self.ties = Counter()
 		# TODO: Consider getting rid of these and finding
@@ -136,19 +136,17 @@ class Read(object):
 
 	def get_cdr3_sequence(self):
 		if self.top_J.query_alignment_end <= self.top_V.query_alignment_end:
-			log.info(self.VJ_alignment_stats())
-			log.info(self.VJ_alignment_diagram())
+			log.verbose(self.VJ_alignment_stats())
+			log.verbose(self.VJ_alignment_diagram(), indent=0)
 			log.warn(
 				f"End of J alignment ({self.top_J.query_alignment_end}) does not "
 				f"come after the end of V alignment ({self.top_V.query_alignment_end})"
 			)
-			self.cdr3_status = "ERR"
 			return
 		if self.top_J.query_alignment_end >= self.query_cdr3_end: # If we have the entire J region
-			self.cdr3_status = "COM"
+			self.is_complete_cdr3 = True
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:self.query_cdr3_end]
 		else: # Incomplete CDR3
-			self.cdr3_status = "INC"
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:]
 
 	def VJ_alignment_diagram(self) -> str:

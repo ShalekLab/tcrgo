@@ -3,6 +3,7 @@ import os.path as osp
 import subprocess as sp
 import re
 import random
+import pandas as pd
 
 from pathlib import Path
 from typing import List, Tuple, Dict, Set, DefaultDict, Deque
@@ -223,6 +224,39 @@ def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 			line = line.strip().split('\t')
 			cdr3_positions[line[0]] = int(line[1])
 	return cdr3_positions
+
+def read_cdr3_info(workers: range, input_path: Path, output_path: Path):
+	"""
+	def concatenate_sheets(self, sheets):
+		df = pd.DataFrame(columns=[self.entry, self.R1_path, self.R2_path])
+		for sheet in sheets:
+			sheet = pd.read_csv(
+				sheet, 
+				sep='\t', 
+				usecols=[i for i in range(3)],
+				names=[self.entry, self.R1_path, self.R2_path]
+			)
+			df = pd.concat(objs=[df, sheet], join="outer")
+		return df
+	"""
+	for w in workers:
+		cdr3_info_filename = osp.join(input_path, f"cdr3_info{w}.tsv")
+		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0, index_col=["BC_index", "UMI_index"])
+		if w == 1:
+			aggregated_cdr3_info = w_cdr3_info
+		else:
+			aggregated_cdr3_info = pd.concat([
+				aggregated_cdr3_info,
+				w_cdr3_info
+			])
+	aggregated_cdr3_info_filename = osp.join(output_path, "aggregated_cdr3_info.tsv")
+	if osp.isfile(aggregated_cdr3_info_filename):
+		log.warn(f"Deleting already existing {aggregated_cdr3_info_filename}.")
+		os.remove(aggregated_cdr3_info_filename)
+	log.info("Sorting aggregated DataFrame by 'BC' and 'UMI' and writing to file.")
+	#aggregated_cdr3_info = aggregated_cdr3_info.sort_values(["BC", "UMI"])
+	aggregated_cdr3_info.to_csv(aggregated_cdr3_info_filename, sep='\t', header=True)
+	log.info(f"Wrote {aggregated_cdr3_info_filename}")
 
 ###################################################################################
 #	Deprecated

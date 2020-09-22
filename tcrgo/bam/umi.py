@@ -1,12 +1,12 @@
 import pysam
 import textwrap
-from collections import Counter
+from collections import Counter, defaultdict
 
 # TODO: See if can reimplement class using this article:
 # https://treyhunner.com/2019/04/why-you-shouldnt-inherit-from-list-and-dict-in-python/ 
 #from collections import UserList, UserDict
 
-from typing import List, Dict, Iterator, Set, Tuple
+from typing import List, Dict, Iterator, Set, Tuple, Counter
 IndexedReads = pysam.libcalignmentfile.IndexedReads
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
 BAM = pysam.libcalignmentfile.AlignmentFile
@@ -21,15 +21,18 @@ class UMI(object):
 		self.sequence = sequence
 		self.reads = dict()
 		self.counts_region = Counter()
-		self.counts_top_V = Counter()
-		self.counts_top_J = Counter()
-		self.counts_top_VJ = Counter()
-		self.cdr3 =  None
+		#self.counts_top_V = Counter()
+		#self.counts_top_J = Counter()
+		#self.top_V = None
+		#self.top_J = None
+		self.top_VJ = None
+		self.count_top_VJ = None
+		self.frequency_top_VJ = None
+		self.reads_top_VJ = None
+		self.top_cdr3 = None
 		self.is_complete_cdr3 = False
-		self.top_V = None
-		self.top_J = None
-		self.reads_top_V = dict()
-		self.reads_top_J = dict()
+		self.count_top_cdr3 = None
+		self.frequency_top_cdr3 = None
 
 	def __len__(self) -> int:
 		return len(self.reads)
@@ -84,60 +87,24 @@ class UMI(object):
 			f"{count_incomplete} incomplete of {count_total} reads."
 		)
 
-	@log.time
-	def count_top_VJ_by_alignments(self):
-		log.info("We in this by alignments")
-		self.counts_top_V = Counter()
-		self.counts_top_J = Counter()
-		count_total_J = 0
-		count_total_V = 0
+	def find_top_VJ(self):
+		counts_VJ = Counter()
+		VJ_reads = defaultdict(list)
 		for read in self.get_reads():
-			for subregion in read.unique_subregions:
-				if "TRAV" in subregion or "TRBV" in subregion:
-					self.counts_top_V[read.top_V.reference_name] += 1
-					count_total_V += 1
-				elif "TRAJ" in subregion or "TRBJ" in subregion:
-					self.counts_top_J[read.top_J.reference_name] += 1
-					count_total_J += 1
-				
-		top_V = max(self.counts_top_V, key=self.counts_top_V.get)
-		top_J = max(self.counts_top_J, key=self.counts_top_J.get)
-		
-		frequency_top_V = self.counts_top_V[top_V] / count_total_V
-		frequency_top_J = self.counts_top_J[top_J] / count_total_J
-		
-		log.info(f"{self.counts_top_V=}")
-		log.verbose(f"{top_V=} {frequency_top_V=}")
-		log.info(f"{self.counts_top_J=}")
-		log.verbose(f"{top_J=} {frequency_top_J=}")
-		log.info(f"{count_total_V=} {count_total_J=}")
+			VJ = f"{read.top_V.reference_name}|{read.top_J.reference_name}"
+			VJ_reads[VJ].append(read)
+			counts_VJ[VJ] += 1
+		self.top_VJ = max(counts_VJ, key=counts_VJ.get)
+		self.reads_top_VJ = VJ_reads[self.top_VJ]
+		#self.top_V, self.top_J = self.top_VJ.split('|')
 
-	@log.time
-	def count_top_VJ(self):
-		log.info("We in this")
-		self.counts_top_V = Counter()
-		self.counts_top_J = Counter()
-		self.counts_top_VJ = Counter()
-		for read in self.get_reads():
-			self.counts_top_V[read.top_V.reference_name] += 1
-			self.counts_top_J[read.top_J.reference_name] += 1
-			self.counts_top_VJ[f"{read.top_V.reference_name}:{read.top_J.reference_name}"] += 1
-		top_V = max(self.counts_top_V, key=self.counts_top_V.get)
-		top_J = max(self.counts_top_J, key=self.counts_top_J.get)
-		top_VJ = max(self.counts_top_VJ, key=self.counts_top_VJ.get)
-		
-		count_total = sum(self.counts_top_V.values())
-		frequency_top_V = self.counts_top_V[top_V] / count_total
-		frequency_top_J = self.counts_top_J[top_J] / count_total
-		frequency_top_VJ = self.counts_top_VJ[top_VJ] / count_total
-		
-		log.info(f"{self.counts_top_V=}")
-		log.verbose(f"{top_V=} {frequency_top_V=}")
-		log.info(f"{self.counts_top_J=}")
-		log.verbose(f"{top_J=} {frequency_top_J=}")
-		log.info(f"{self.counts_top_VJ=}")
-		log.verbose(f"{top_VJ=} {frequency_top_VJ=}")
-		log.info(f"{count_total=}")
+		count_total = len(self)
+		self.count_top_VJ = counts_VJ[self.top_VJ]
+		self.frequency_top_VJ = self.count_top_VJ / count_total
+	
+		#log.info(f"{counts_VJ=}")
+		#log.verbose(f"{top_VJ}/{count_total} = {self.frequency_top_VJ}")
+		#log.info(f"{count_total=}")
 
 	@log.time
 	def count_regions(self):
@@ -146,51 +113,60 @@ class UMI(object):
 				if read.has_region[subregion]:
 					self.counts_region[subregion] += 1
 
-	@log.time
 	def resolve_tcr_identity(self):
 		"""
 		Figures out the V, J, and CDR3 consensus sequences for the UMI
 		TODO: Currently only considers NT, not AA sequence.
 		TODO: Unfinished
 		"""
-		for read in self.get_reads():
-			if read.cdr3_status == "COM":
-				self.is_complete_cdr3 = True # We'll drop incompletes
+		for read in self.reads_top_VJ:
+			if read.cdr3 is not None and read.is_complete_cdr3:
+				self.is_complete_cdr3 = True # UMI's CDR3 identity will only consider complete CDR3's
 				break
-		
-		cdr3_counter = Counter()
-		for read in self.get_reads():
-			if self.is_complete_cdr3 and read.cdr3_status != "COM":
+		counts_cdr3 = Counter()
+		for read in self.reads_top_VJ:
+			if self.is_complete_cdr3 and not read.is_complete_cdr3:
 				continue
 			elif read.cdr3:
-				cdr3_counter[read.cdr3] += 1
-		
-		top_cdr3 = []
+				counts_cdr3[read.cdr3] += 1
+		if not counts_cdr3:
+			log.warn(f"{self.sequence} had all CDR3s=None")
+			self.top_cdr3 = "NA"
+			self.count_top_cdr3 = "NA"
+			self.frequency_top_cdr3 = "NA"
+			return
+
+		top_cdr3s = []
 		max_count = 0
-		for cdr3, count in cdr3_counter.items():
-			if not top_cdr3:
-				top_cdr3.append(cdr3)
+		for cdr3, count in counts_cdr3.items():
+			if not top_cdr3s:
+				top_cdr3s.append(cdr3)
 				max_count = count
 			elif count > max_count:
-				top_cdr3 = [cdr3]
+				top_cdr3s = [cdr3]
 				max_count = count
 			elif count == max_count:
-				top_cdr3.append(cdr3)
-		if len(top_cdr3) > 1:
-			log.verbose(f"We have a CDR3 tie of count {max_count} among {','.join(top_cdr3)}")
+				top_cdr3s.append(cdr3)
+		if len(top_cdr3s) > 1:
+			log.warn(f"We have a CDR3 tie of count {max_count} among {','.join(top_cdr3s)}")
 			#TODO: Resolve ties via consensus sequence?
-		top_cdr3 = top_cdr3[0]
+		top_cdr3 = top_cdr3s[0] # TODO: For now just do first appended. Resolve.
 		
 		''' TODO: Hamming variants
 		cdr3_candidates = []
-		for cdr3 in cdr3_counter.keys():
+		for cdr3 in counts_cdr3.keys():
 			if len(cdr3) == len(top_cdr3):
 		'''
-
+		self.count_top_cdr3 = counts_cdr3[top_cdr3]
+		self.frequency_top_cdr3 = self.count_top_cdr3 / len(self)
 		if not self.is_complete_cdr3:
 			top_cdr3 += '_'
-		self.cdr3 = top_cdr3
-			
+		self.top_cdr3 = top_cdr3
+
+	#########################################################################
+	#	Below is deprecated code that will be removed eventually
+	#########################################################################
+
 	""" # This was a more general approach
 	def count_subregions(self):
 		for read in self.get_reads():
@@ -243,4 +219,48 @@ class UMI(object):
 		for read in to_delete:
 			del read
 
-	
+	@log.time
+	def find_top_V_J_separately(self) -> Tuple[Counter[str], Counter[str]]:
+		counts_top_V = Counter()
+		counts_top_J = Counter()
+		for read in self.get_reads():
+			counts_top_V[read.top_V.reference_name] += 1
+			counts_top_J[read.top_J.reference_name] += 1
+		top_V = max(counts_top_V, key=counts_top_V.get)
+		top_J = max(counts_top_J, key=counts_top_J.get)
+		count_total = sum(counts_top_V.values())
+		frequency_top_V = counts_top_V[top_V] / count_total
+		frequency_top_J = counts_top_J[top_J] / count_total
+		log.info(f"{counts_top_V=}")
+		log.verbose(f"{top_V=} {frequency_top_V=}")
+		log.info(f"{counts_top_J=}")
+		log.verbose(f"{top_J=} {frequency_top_J=}")
+		log.info(f"{count_total=}")
+		return 
+
+	@log.time
+	def find_top_V_J_by_alignments(self):
+		self.counts_top_V = Counter()
+		self.counts_top_J = Counter()
+		count_total_J = 0
+		count_total_V = 0
+		for read in self.get_reads():
+			for subregion in read.unique_subregions:
+				if "TRAV" in subregion or "TRBV" in subregion:
+					self.counts_top_V[subregion] += 1
+					count_total_V += 1
+				elif "TRAJ" in subregion or "TRBJ" in subregion:
+					self.counts_top_J[subregion] += 1
+					count_total_J += 1
+				
+		top_V = max(self.counts_top_V, key=self.counts_top_V.get)
+		top_J = max(self.counts_top_J, key=self.counts_top_J.get)
+		
+		frequency_top_V = self.counts_top_V[top_V] / count_total_V
+		frequency_top_J = self.counts_top_J[top_J] / count_total_J
+		
+		log.info(f"{self.counts_top_V=}")
+		log.verbose(f"{top_V=} {frequency_top_V=}")
+		log.info(f"{self.counts_top_J=}")
+		log.verbose(f"{top_J=} {frequency_top_J=}")
+		log.info(f"{count_total_V=} {count_total_J=}")
