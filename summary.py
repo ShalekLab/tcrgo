@@ -24,10 +24,8 @@ def main(args):
 	else:
 		worker_range = range(1, worker_range[-1]+1)
 
-	io.read_cdr3_info(worker_range, args.input_path, args.output_path)
-	#io.concatenate_cdr3_info()
-
-	#barcode_umi_counts = reads.groupby(['Barcode', 'UMI']).size().reset_index().rename(columns={0:'count'})
+	aggregated_cdr3_info = io.read_cdr3_info(worker_range, args.input_path, args.string_index)
+	io.write_aggregated_cdr3_info(aggregated_cdr3_info, args.output_path)
 
 if __name__ == "__main__":
 
@@ -56,7 +54,9 @@ if __name__ == "__main__":
 		"workers",
 		type=str,
 		metavar="<NUMWORKERS or NUMFIRST:NUMLAST>",
-		help="The number or range [NUMFIRST, NUMLAST] of reconstruct_tcrs text files to be concatenated for summary"
+		help=
+			"The number or range [NUMFIRST, NUMLAST] of reconstruct_tcrs text "
+			"files to be concatenated for summary. NUMFIRST must be > 0."
 	)
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(
@@ -64,7 +64,14 @@ if __name__ == "__main__":
 		type=str,
 		default="INFO",
 		choices=["INFO", "VERBOSE", "WARNING", "SUCCESS", "ERROR"],
-		help="The verbosity of the log. (default: %(default)s)."
+		help="The verbosity of the log (default: %(default)s)."
+	)
+	parser.add_argument(
+		'-s', "--string-index", 
+		action="store_true",
+		help=
+			"Output the aggregated CDR3 info .tsv file with the BC and UMI strings"
+			"as the indices instead of numbering them for easier reading (default: %(default)s)."
 	)
 	parser.add_argument(
 		'-i', "--input-path",

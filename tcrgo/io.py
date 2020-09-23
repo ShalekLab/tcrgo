@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict, Set, DefaultDict, Deque
 import pysam
 BAM = pysam.libcalignmentfile.AlignmentFile
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
+DataFrame = pd.core.frame.DataFrame
 from collections import Counter, deque, defaultdict
 
 from .log import Log
@@ -225,37 +226,40 @@ def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 			cdr3_positions[line[0]] = int(line[1])
 	return cdr3_positions
 
-def read_cdr3_info(workers: range, input_path: Path, output_path: Path):
-	"""
-	def concatenate_sheets(self, sheets):
-		df = pd.DataFrame(columns=[self.entry, self.R1_path, self.R2_path])
-		for sheet in sheets:
-			sheet = pd.read_csv(
-				sheet, 
-				sep='\t', 
-				usecols=[i for i in range(3)],
-				names=[self.entry, self.R1_path, self.R2_path]
-			)
-			df = pd.concat(objs=[df, sheet], join="outer")
-		return df
-	"""
+def read_cdr3_info(workers: range, input_path: Path, string_index: bool=False) -> DataFrame:
 	for w in workers:
 		cdr3_info_filename = osp.join(input_path, f"cdr3_info{w}.tsv")
-		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0, index_col=["BC_index", "UMI_index"])
+		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0, index_col=["BC", "UMI"])
 		if w == 1:
-			aggregated_cdr3_info = w_cdr3_info
+			df = w_cdr3_info
 		else:
-			aggregated_cdr3_info = pd.concat([
-				aggregated_cdr3_info,
-				w_cdr3_info
-			])
+			df = pd.concat([df, w_cdr3_info])
+	
+	log.info("Sorting aggregated DataFrame by 'BC' and 'UMI'.")
+	df = df.sort_values(["BC", "UMI"])
+	df.drop(["BC_index", "UMI_index"], axis=1, inplace=True)
+	if string_index:
+		mask = df.index.get_level_values("BC").to_series().duplicated()
+		df = df.reset_index()
+		df.loc[mask.values,['BC']] = ''
+	else:
+		umi_index = df.groupby(level="BC").cumcount()+1
+		umi_index = umi_index.reset_index(drop=True)
+		counts = pd.DataFrame(df.groupby("BC").size()).rename(columns={0:"count"}).reset_index(drop=True)
+		counts.index += 1
+		bc_index = counts.index.to_series().repeat(counts["count"]).reset_index(drop=True)
+		df = df.reset_index()
+		df.insert(0, "UMI_index", umi_index)
+		df.insert(0, "BC_index", bc_index)	
+	return df
+
+def write_aggregated_cdr3_info(df: DataFrame, output_path: Path):
+	log.info("Writing aggregated dataframe to file.")
 	aggregated_cdr3_info_filename = osp.join(output_path, "aggregated_cdr3_info.tsv")
 	if osp.isfile(aggregated_cdr3_info_filename):
 		log.warn(f"Deleting already existing {aggregated_cdr3_info_filename}.")
 		os.remove(aggregated_cdr3_info_filename)
-	log.info("Sorting aggregated DataFrame by 'BC' and 'UMI' and writing to file.")
-	#aggregated_cdr3_info = aggregated_cdr3_info.sort_values(["BC", "UMI"])
-	aggregated_cdr3_info.to_csv(aggregated_cdr3_info_filename, sep='\t', header=True)
+	df.to_csv(aggregated_cdr3_info_filename, sep='\t', header=True, index=False)
 	log.info(f"Wrote {aggregated_cdr3_info_filename}")
 
 ###################################################################################
