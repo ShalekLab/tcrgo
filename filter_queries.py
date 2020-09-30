@@ -24,7 +24,7 @@ def main(args):
 
 	log.init(args.verbosity)
 	log.info("Parsing input data...")
-	bam = io.parse_data(args.data, args.output_path)
+	bam = io.sort_and_index(args.bam, args.output_path)
 	log.info("Fetching unique queries which contain alignments to V and J and grouping them by Barcode-UMI...")
 	queries_VJ, queries_nonVJ = io.parse_queries(bam)
 	log.info(f"Fetched {len(queries_VJ)} VJ reads and {len(queries_nonVJ)} non-VJ reads.")
@@ -68,11 +68,12 @@ if __name__ == "__main__":
 	)
 	# REQUIRED ARGUMENTS
 	parser.add_argument(
-		"data", 
+		"ALIGNED_BAM", 
 		type=Path,
-		nargs='+',
-		metavar="<BAM or FASTQ_R1 FASTQ_R2>",
-		help="Path to single-end BAM or the paired-end FASTQs"
+		metavar="<ALIGNED BAM FROM ALIGNMENT SCRIPT>",
+		help=
+			"Path to single-end tagged, trimmed, aligned, repaired BAM. IMPORTANT: "
+			"We strongly recommend using the alignment script to create this BAM."
 	)
 
 	# OPTIONAL ARGUMENTS

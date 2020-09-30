@@ -3,15 +3,15 @@ import os.path as osp
 import subprocess as sp
 import re
 import random
+from collections import Counter, deque, defaultdict
+from .dropseq_tools import fastq_to_bam
 import pandas as pd
-
-from pathlib import Path
-from typing import List, Tuple, Dict, Set, DefaultDict, Deque
 import pysam
 BAM = pysam.libcalignmentfile.AlignmentFile
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
 DataFrame = pd.core.frame.DataFrame
-from collections import Counter, deque, defaultdict
+from pathlib import Path
+from typing import List, Tuple, Dict, Set, DefaultDict, Deque
 
 from .log import Log
 log = Log(name=__name__)
@@ -60,28 +60,6 @@ def determine_data_filetype(data: List[Path]) -> bool:
 	else:
 		log.error("Please either input one '.bam' path or two '.fastq.gz'/'.fastq' paths.")
 
-# TODO: Redo but with Picard
-def fastq_to_bam(reference: Path, data: List[Path]) -> Path:
-	"""
-	Convert FASTQ to BAM using pysam and return the path to the newly created BAM
-	"""
-	# Get sample name as the basename without extension for read1
-	# sample is used as the name of the created SAM / BAM
-	pass
-	"""
-	sample = osp.splitext(read1)[0]
-	output = sp.check_output(
-		['bwa', 'mem', fasta, read1, read_tcr]
-	).strip().decode()
-	sam = f"{sample}TCRalign.sam"
-	bam = sam.replace(".bam", "Sort.bam")
-	pysam.view(output, '-F', '256', 'h', f'save_stdout={sam}') # Can't use -b flag here?
-	# TODO: Only way to convert to BAM? Seems redundant to step in sort_index_bam
-	pysam.sort('-o', bam, sam)
-	return bam
-	"""
-
-# TODO: Should this method return Path or BAM?
 def parse_data(data: List[Path], output_path: Path) -> BAM:
 	"""
 	Read the inputted path(s) to the single-end BAM or paired-end FASTQS
@@ -92,8 +70,7 @@ def parse_data(data: List[Path], output_path: Path) -> BAM:
 	if is_bam:
 		bam = data[0]
 	else:
-		log.error("FASTQ TO BAM CURRENTLY NOT SUPPORTED") #TODO
-		#bam = fastq_to_bam(data)
+		log.error("Please run the alignment script to convert paired end FASTQs to an aligned BAM.")
 	bam = sort_and_index(bam, output_path)
 	return bam
 
@@ -277,3 +254,24 @@ def output_queries(queries: Set[str], output_path: Path, workers: int):
 			os.remove(queries_filename)
 		with open(queries_filename, 'w') as query_list:
 			query_list.write('\n'.join(queries[i*p + min(i, r) : (i+1)*p + min(i+1, r)]))
+
+# Uses BWA. Untested.
+def bwa_fastq_to_bam(reference: Path, data: List[Path]) -> Path:
+	"""
+	Convert FASTQ to BAM using pysam and return the path to the newly created BAM
+	"""
+	# Get sample name as the basename without extension for read1
+	# sample is used as the name of the created SAM / BAM
+	pass
+	"""
+	sample = osp.splitext(read1)[0]
+	output = sp.check_output(
+		['bwa', 'mem', fasta, read1, read_tcr]
+	).strip().decode()
+	sam = f"{sample}TCRalign.sam"
+	bam = sam.replace(".bam", "Sort.bam")
+	pysam.view(output, '-F', '256', 'h', f'save_stdout={sam}') # Can't use -b flag here?
+	# TODO: Only way to convert to BAM? Seems redundant to step in sort_index_bam
+	pysam.sort('-o', bam, sam)
+	return bam
+	"""
