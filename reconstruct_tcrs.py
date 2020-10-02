@@ -31,6 +31,8 @@ def main(args):
 
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
+	# TODO: Consider splitting fully-mapped V/J reads and partially-mapped V/J reads into different camps
+	# Perform de Bruijn graph sequence assembly on partially mapped reads.
 	bamdict.build(id_queries)
 	log.info("Finished retrieving top V and J alignments for each query.")
 

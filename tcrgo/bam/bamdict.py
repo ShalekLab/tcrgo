@@ -109,7 +109,7 @@ class BAMDict(object):
 		bam_indexed.build()
 		log.info("Built index in memory for fast retrieval")
 		count = 0
-		count_interval = len(id_queries) // 20
+		report_interval = len(id_queries) // 20
 		for id_query in id_queries:
 			barcode, umi, query_name = id_query.split('|') 
 			read = Read(query_name)
@@ -122,7 +122,7 @@ class BAMDict(object):
 				self[barcode][umi] = UMI(umi)
 			self[barcode][umi][query_name] = read
 			count += 1
-			if count % count_interval == 0:
+			if count % report_interval == 0:
 				log.info(f"Processed {count} reads of {len(id_queries)}")
 	
 	# TODO: Move to Read file, adjust, and call for each read from reconstruct_tcrs instead

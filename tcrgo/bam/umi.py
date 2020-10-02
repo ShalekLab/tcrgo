@@ -98,8 +98,8 @@ class UMI(object):
 		self.reads_top_VJ = VJ_reads[self.top_VJ]
 		#self.top_V, self.top_J = self.top_VJ.split('|')
 
-		count_total = len(self)
 		self.count_top_VJ = counts_VJ[self.top_VJ]
+		count_total = len(self)
 		self.frequency_top_VJ = self.count_top_VJ / count_total
 	
 		#log.info(f"{counts_VJ=}")

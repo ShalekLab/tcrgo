@@ -306,7 +306,7 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 	log.sep('-')
 	return bam_repaired
 
-# TODO: Untested. Do these args look right?
+# TODO: Python untested.
 def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 	command = \
 		f"""
@@ -316,12 +316,13 @@ def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 			PRIMARY_BARCODE=XC \
 			EDIT_DISTANCE=1 \
 			FIND_INDELS=true \
-			OUT_BARCODE=CR \
+			OUT_BARCODE=XC \
 			MINIMUM_MAPPING_QUALITY=10 \
-			NUM_CORE_BARCODES=???ASKSARAH???
-			or	MIN_NUM_READS_CORE=100 \
-				MIN_NUM_READS_NONCORE=1 \
+			MIN_NUM_READS_CORE=100 \
+			MIN_NUM_READS_NONCORE=1 \
 			FILTER_PCR_DUPLICATES=false \
+			USE_JDK_INFLATER=true \
+			USE_JDK_DEFLATER=true \
 			NUM_THREADS=4
 		"""
 	log.sep('-')
@@ -329,29 +330,16 @@ def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 	log.sep('-')
 	return bam_output
 
-# TODO: Untested. Do these args look right?
+# TODO: Python untested.
 def collapsetagwithcontext(dropseq_jar: str, bam: str, bam_output: str):
 	command = \
 		f"""
-		java -jar {dropseq_jar} CollapseTagWithContext \
+		java -Xmx4g -jar {dropseq_jar} CollapseTagWithContext \
 			VERBOSITY=DEBUG \
 			INPUT={bam} \
 			COLLAPSE_TAG=XU \
 			CONTEXT_TAGS=XC \
-			#COUNT_TAGS=XU? \ #By default, groups of reads are gathered by their CONTEXT_TAGS and ordered by the number
-                              of total reads.  Contexts with larger numbers of reads are potential 'parents' of smaller
-                              context objects. If this option is used, the count of a context to determine it's ordering
-                              is the unique count of values of the TAG(S) added here.  For example, if you wanted to
-                              collapse by UMI counts instead of read counts, you could put the UMI tag here.  Default
-                              value: null. This option may be specified 0 or more times. 
-			#COUNT_TAGS_EDIT_DISTANCE=1 \ #If COUNT_TAGS is set and COUNT_TAGS_EDIT_DISTANCE>0, then collapse the COUNT_TAGS in a
-                              CONTEXT by the given edit distance.  For example, if you wanted to collapse by UMIs
-                              instead of read counts, and you wanted to further collapse UMIs by edit distance 1, you'd
-                              set COUNT_TAGS_EDIT_DISTANCE to 1.  This doesn't do much unless MIN_COUNT is also set as
-                              collapse would only be affected if there is a minimum number of counts for each CONTEXT to
-                              be in a COLLAPSE.  Default value: 0. This option can be set to 'null' to clear the default
-                              value.
-			OUT_TAG=MI \
+			OUT_TAG=XU \
 			OUTPUT={bam_output} \
 			EDIT_DISTANCE=1 \
 			FIND_INDELS=true \
@@ -359,8 +347,11 @@ def collapsetagwithcontext(dropseq_jar: str, bam: str, bam_output: str):
 			MIN_COUNT=1 \
 			DROP_SMALL_COUNTS=false \
 			NUM_THREADS=4 \
-		"""
+			USE_JDK_INFLATER=true \
+			USE_JDK_DEFLATER=true
+		""" # COUNT_TAGS option?
 	log.sep('-')
 	execute(command)
 	log.sep('-')
 	return bam_output
+
