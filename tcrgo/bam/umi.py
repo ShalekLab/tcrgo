@@ -106,7 +106,6 @@ class UMI(object):
 		#log.verbose(f"{top_VJ}/{count_total} = {self.frequency_top_VJ}")
 		#log.info(f"{count_total=}")
 
-	@log.time
 	def count_regions(self):
 		for read in self.get_reads():
 			for subregion in ("TRAV", "TRAJ", "TRAC", "TRBV", "TRBJ", "TRBC", "UNKN"):

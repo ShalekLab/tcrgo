@@ -36,7 +36,7 @@ def main(args):
 	#		as alignments of a read.
 	#		Maybe could use pysam.PileUpColumn/PileUp for this?
 	
-	log.info("Writing all queries not containing V and J alignments to file.")
+	log.info("Writing all (partially) mapped queries not containing V and J alignments to file.")
 	io.output_nonVJ(queries_nonVJ, args.output_path)
 	log.info(f"Filtering out UMIs with VJ below {args.minimum_reads} reads and randomly "
 			f"subsampling those with reads exceeding {args.maximum_reads} reads.")
@@ -68,7 +68,7 @@ if __name__ == "__main__":
 	)
 	# REQUIRED ARGUMENTS
 	parser.add_argument(
-		"ALIGNED_BAM", 
+		"bam", 
 		type=Path,
 		metavar="<ALIGNED BAM FROM ALIGNMENT SCRIPT>",
 		help=
@@ -101,7 +101,7 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-o', "--output-path", 
 		type=Path,
-		default="./tcrgo_out",
+		default="./out/queries/",
 		help="The path to which the files from this program will output. (default: %(default)s )."
 	)
 	parser.add_argument(

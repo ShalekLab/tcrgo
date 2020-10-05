@@ -24,7 +24,7 @@ def sort_and_index(bam: Path, output_path: str) -> Path:
 	If a sorted BAM already exists at output_path, use that instead
 	"""
 	if not osp.exists(output_path):
-		os.mkdir(output_path)
+		os.makedirs(output_path)
 	bam_basename = osp.splitext(osp.basename(bam))[0]
 	bam_sorted_name = f"{bam_basename}_sorted.bam"
 	bam_sorted_path = osp.join(output_path, bam_sorted_name)
@@ -85,7 +85,7 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 	queries_J = set()
 	queries_all = set()
 	count_unmapped = 0
-	for alignment in bam.fetch():
+	for alignment in bam: # .fetch():
 		barcode = alignment.get_tag("XC")
 		umi = alignment.get_tag("XU")
 		id_query = f"{barcode}|{umi}|{alignment.query_name}"
@@ -94,12 +94,14 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 			count_unmapped += 1
 			continue
 		if "TRAV" in alignment.reference_name or "TRBV" in alignment.reference_name:
-			query_set = queries_V
+			#query_set = queries_V
+			queries_V.add(id_query)
 		elif "TRAJ" in alignment.reference_name or "TRBJ" in alignment.reference_name:
-			query_set = queries_J
-		else:
-			continue
-		query_set.add(id_query)
+			#query_set = queries_J
+			queries_J.add(id_query)
+		#else:
+		#	continue
+		#query_set.add(id_query)
 	log.info(f"Found and ignored {count_unmapped} unmapped reads.")
 	queries_VJ = queries_V & queries_J
 	queries_nonVJ = queries_all - queries_VJ
@@ -126,7 +128,7 @@ def get_partition_queries(w: int, workers:int, max_size: int, id_queries: Defaul
 						ids_sorted: Deque[str], id_querycounts: Dict[str, int]) -> List[str]:
 	LEFT = 0 # Index of current maximum in ids_sorted
 	RIGHT = -1 # Index of current minimum in ids_sorted
-	to_write = []
+	to_write = list()
 	count = 0
 	# TODO: Consider adding: `or # remaining reads < max_size/10`
 	if w == workers - 1: # If the last file, just write whatever remains.
@@ -165,8 +167,8 @@ def output_grouped_VJ_queries(id_queries: DefaultDict[str, List[str]], workers: 
 	partition_size = num_queries // workers
 	remainder = num_queries % partition_size
 	max_size = partition_size + remainder
-	log.info(f"Distributing {num_queries} values belonging to {len(ids_sorted)} "
-			f"Barcode-UMI pairs somewhat evenly across {workers} files.")
+	log.info(f"Distributing {num_queries} queries belonging to {len(ids_sorted)} "
+			f"Barcode-UMI pairs somewhat evenly across {workers} file(s).")
 	log.sep('-', width=50)
 
 	for w in range(workers):	
@@ -232,6 +234,8 @@ def read_cdr3_info(workers: range, input_path: Path, string_index: bool=False) -
 
 def write_aggregated_cdr3_info(df: DataFrame, output_path: Path):
 	log.info("Writing aggregated dataframe to file.")
+	if not osp.exists(output_path):
+		os.makedirs(output_path)
 	aggregated_cdr3_info_filename = osp.join(output_path, "aggregated_cdr3_info.tsv")
 	if osp.isfile(aggregated_cdr3_info_filename):
 		log.warn(f"Deleting already existing {aggregated_cdr3_info_filename}.")
@@ -254,24 +258,3 @@ def output_queries(queries: Set[str], output_path: Path, workers: int):
 			os.remove(queries_filename)
 		with open(queries_filename, 'w') as query_list:
 			query_list.write('\n'.join(queries[i*p + min(i, r) : (i+1)*p + min(i+1, r)]))
-
-# Uses BWA. Untested.
-def bwa_fastq_to_bam(reference: Path, data: List[Path]) -> Path:
-	"""
-	Convert FASTQ to BAM using pysam and return the path to the newly created BAM
-	"""
-	# Get sample name as the basename without extension for read1
-	# sample is used as the name of the created SAM / BAM
-	pass
-	"""
-	sample = osp.splitext(read1)[0]
-	output = sp.check_output(
-		['bwa', 'mem', fasta, read1, read_tcr]
-	).strip().decode()
-	sam = f"{sample}TCRalign.sam"
-	bam = sam.replace(".bam", "Sort.bam")
-	pysam.view(output, '-F', '256', 'h', f'save_stdout={sam}') # Can't use -b flag here?
-	# TODO: Only way to convert to BAM? Seems redundant to step in sort_index_bam
-	pysam.sort('-o', bam, sam)
-	return bam
-	"""

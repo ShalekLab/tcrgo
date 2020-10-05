@@ -16,6 +16,8 @@ from ..log import Log
 log = Log(name=__name__)
 log.proceed()
 
+import os.path as osp # DEV
+
 class Read(object):
 	def __init__(self, query_name: str):
 		self.query_name = query_name
@@ -23,8 +25,8 @@ class Read(object):
 		self.alignments = list()
 		self.top_J = None
 		self.top_V = None
-		#self.top_index_V = -1
-		#self.top_index_J = -1
+		#self.top_index_V = -1 # for explore.py
+		#self.top_index_J = -1 # for explore.py
 		self.is_TRA = None
 		self.cdr3 = None
 		self.is_complete_cdr3 = False
@@ -46,15 +48,12 @@ class Read(object):
 		return iter(self.alignments)
 
 	def append(self, alignment: AlignedSegment):
-		# If the alignment score is equal to the best alignment score for the Read,
-		# bookmark that alignment as the Read's best alignment
-		tags = dict(alignment.tags)
-		if tags["AS"] == tags["XS"]:
-			self.best_alignment = alignment
 		self.alignments.append(alignment)
 
 	@log.fdoc
-	def print_alignment(self, alignment: AlignedSegment):
+	def alignment_info(self, alignment: AlignedSegment) -> str:
+		if alignment == None:
+			return "NONE!"
 		return \
 			f"""
 			QNAME:	{self.query_name}
@@ -66,6 +65,20 @@ class Read(object):
 			FLAG:	{alignment.flag}
 			MAPQ:	{alignment.mapping_quality}
 			"""
+
+	def alignment_info_line(self, alignment: AlignedSegment) -> str:
+		if alignment == None:
+			return f"NONE{'	'*7}"
+		return '\t'.join([
+			alignment.query_name,
+			alignment.reference_name,
+			str(alignment.get_tag("AS")),
+			alignment.cigarstring,
+			str(alignment.get_tag("UQ")),
+			str(alignment.get_tag("NM")),
+			str(alignment.flag),
+			str(alignment.mapping_quality)
+		]) + '\n'
 
 	# TODO: Refine tie-breaking conditions
 	# TODO: Output the tiebreak info as a file
@@ -84,6 +97,17 @@ class Read(object):
 		self.ties[f"{winner}>{loser}:{method}"] += 1
 		return winner
 
+	def compare_scores(self, top_alignment: AlignedSegment, top_score: int, alignment: AlignedSegment) -> Tuple[AlignedSegment, int]:
+		"""Compare alignment scores and return the best alignment and the new best score."""
+		score = alignment.get_tag("AS")
+		if score >= top_score:
+			if score == top_score:
+				top_alignment = self.tie_break(top_alignment, alignment)
+			else:
+				top_alignment = alignment
+				top_score = score
+		return top_alignment, top_score
+
 	# TODO: Normalize AS by length of ??? ?
 	def parse_alignments(self, bam_indexed: IndexedReads):
 		top_score_J = 0
@@ -94,25 +118,13 @@ class Read(object):
 			for v in ("TRAV", "TRBV"):
 				if v in alignment.reference_name:
 					self.has_region[v] = True
-					score = alignment.get_tag("AS")
-					if score >= top_score_V:
-						if score == top_score_V:
-							self.top_V = self.tie_break(self.top_V, alignment)
-						else:
-							self.top_V = alignment
-							top_score_V = score
+					self.top_V, top_score_V = self.compare_scores(self.top_V, top_score_V, alignment)
 					break
 			else:
 				for j in ("TRAJ", "TRBJ"):
 					if j in alignment.reference_name:
 						self.has_region[j] = True
-						score = alignment.get_tag("AS")
-						if score >= top_score_J:
-							if score == top_score_J:
-								self.top_J = self.tie_break(self.top_J, alignment)
-							else:
-								self.top_J = alignment
-								top_score_J = score
+						self.top_J, top_score_J = self.compare_scores(self.top_J, top_score_J, alignment)
 						break
 				else:
 					for c in ("TRAC", "TRBC"):
@@ -125,8 +137,20 @@ class Read(object):
 			self.is_TRA = True
 		elif "TRB" in self.top_V.reference_name and "TRB" in self.top_J.reference_name:
 			self.is_TRA = False
-		else: 
-			log.error("We have a top TRA/TRB combo!") #TODO: This is debug. If ever happens, what do?
+		else: #TODO: This is debug. If ever happens, what do?
+			log.warn("We have a top TRA/TRB combo!") 
+			log.sep()
+			log.info(self.alignment_info(self.top_V))
+			log.info(self.alignment_info(self.top_J))
+			log.sep()
+			"""
+			if not osp.isfile("TRABcombos.tsv"):
+				with open("TRABcombos.tsv", 'w') as combos:
+					combos.write('\t'.join(["QNAME", "REF", "SCORE", "CIGAR", "PHRED", "EDIST", "FLAG", "MAPQ"])+'\n')
+			with open("TRABcombos.tsv", 'a') as combos:
+				combos.write(self.alignment_info_line(self.top_V))
+				combos.write(self.alignment_info_line(self.top_J))
+			"""
 
 	def get_cdr3_positions(self, cdr3_positions: Dict[str, int]):
 		self.ref_cdr3_start = cdr3_positions[self.top_V.reference_name]
@@ -152,13 +176,13 @@ class Read(object):
 	def VJ_alignment_diagram(self) -> str:
 		return textwrap.dedent(
 			f"""
-			{' '*self.top_V.query_alignment_start}{self.ref_seq_V[self.top_V.reference_start:self.top_V.reference_end]}
-			{' '*self.top_V.query_alignment_start}{'|'*(self.top_V.reference_end-self.top_V.reference_start)}
-			{' '*self.query_cdr3_start}*
+			{' ' * self.top_V.query_alignment_start}{self.ref_seq_V[self.top_V.reference_start:self.top_V.reference_end]}
+			{' ' * self.top_V.query_alignment_start}{'?'*(self.top_V.reference_end-self.top_V.reference_start)}
+			{' ' * int(self.query_cdr3_start - 1)}*
 			{self.top_V.query_sequence}
-			{' '*self.query_cdr3_end}*
-			{' '*self.top_J.query_alignment_start}{'|'*(self.top_J.reference_end-self.top_J.reference_start)}
-			{' '*self.top_J.query_alignment_start}{self.ref_seq_J[self.top_J.reference_start:self.top_J.reference_end]}
+			{' ' * int(self.query_cdr3_end - 1)}*
+			{' ' * self.top_J.query_alignment_start}{'?'*(self.top_J.reference_end-self.top_J.reference_start)}
+			{' ' * self.top_J.query_alignment_start}{self.ref_seq_J[self.top_J.reference_start:self.top_J.reference_end]}
 			"""
 		)
 

@@ -27,7 +27,7 @@ def main(args):
 	bam = io.sort_and_index(args.bam, args.output_path)
 	
 	log.info("Reading filtered queries containing V and J subregions")
-	id_queries = io.read_id_queries(args.output_path, args.worker)
+	id_queries = io.read_id_queries(args.input_path, args.worker)
 
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
@@ -137,9 +137,15 @@ if __name__ == "__main__":
 		help="The verbosity of the log. (default: %(default)s)."
 	)
 	parser.add_argument(
+		'-i', "--input-path", 
+		type=Path,
+		default="./out/queries/",
+		help="The path to which the files from this program will output. (default: %(default)s )."
+	)
+	parser.add_argument(
 		'-o', "--output-path", 
 		type=Path,
-		default="./tcrgo_out",
+		default="./out/cdr3/",
 		help="The path to which the files from this program will output. (default: %(default)s )."
 	)
 	args = parser.parse_args()

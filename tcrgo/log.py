@@ -8,7 +8,7 @@ class Formatter(logging.Formatter):
 	debug_fmt  = "%(asctime)s - VERBOSE: %(msg)s"
 	info_fmt = "%(asctime)s - INFO: %(msg)s"
 	warning_fmt = "%(asctime)s - WARNING! %(msg)s"
-	error_fmt  = "%(asctime)s - %(name)s: ERROR! %(msg)s (DEV: %(module)s, line %(lineno)d)"
+	error_fmt  = "%(asctime)s - %(name)s: ERROR! %(msg)s" # (DEV: %(module)s, line %(lineno)d)
 	critical_fmt = "%(asctime)s - %(name)s: SUCCESS! %(msg)s"
 
 	def __init__(self, fmt="%(levelno)d: %(msg)s", datefmt="%H:%M:%S, %Y-%m-%d"):
@@ -86,7 +86,7 @@ class Log(object):
 			start = timer()
 			output = function(*args, **kwargs)
 			end = timer()
-			self.info(f"Time for {function}: {end - start}")
+			self.verbose(f"Time for {function}: {end - start}")
 			return output
 		return time_wrapper
 

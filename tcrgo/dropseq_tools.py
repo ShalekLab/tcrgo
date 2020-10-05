@@ -45,9 +45,9 @@ def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam
 			QUALITY_FORMAT=Standard \
 			SORT_ORDER=queryname
 		""" # Might need "SAMPLE_NAME" arg?
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_unmapped
 
 def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) -> str:
@@ -76,9 +76,9 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 			TAG_NAME=XC \
 			NUM_BASES_BELOW_QUALITY=1
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	command = \
 		f"""
 		java -Dsamjdk.compression_level=6 -Xmx4000m -jar {dropseq_jar} \
@@ -94,9 +94,9 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 			TAG_NAME=XU \
 			NUM_BASES_BELOW_QUALITY=1
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_idtagged
 
 def trim_bam(dropseq_jar: str, bam_idtagged: str, bam_trimmed: str) -> str:
@@ -121,9 +121,9 @@ def trim_bam(dropseq_jar: str, bam_idtagged: str, bam_trimmed: str) -> str:
 			MISMATCHES=0 \
 			NUM_BASES=5
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	command = \
 		f"""
 		java -Dsamjdk.compression_level=2 -Xmx4g -jar {dropseq_jar}
@@ -136,9 +136,9 @@ def trim_bam(dropseq_jar: str, bam_idtagged: str, bam_trimmed: str) -> str:
 			NUM_BASES=6 \
 			USE_NEW_TRIMMER=true
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_trimmed
 
 @log.time
@@ -177,11 +177,11 @@ def align_bam(bam_trimmed: str, fasta: str, sam_aligned: str) -> str:
 	index_prefix = os.path.basename(fasta.split('.')[0])
 	index_prefix = os.path.join(os.path.dirname(sam_aligned), index_prefix)
 	command = f"bowtie2-build -f {fasta} --threads 32 {index_prefix}"
-	log.sep('-')
+	log.sep()
 	execute(command)
 	command = f"bowtie2 -x {index_prefix} -a --very-sensitive-local -p 32 -S {sam_aligned} -b {bam_sorted} --preserve-tags"
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return sam_aligned
 
 def sort_sam(picard_jar: str, sam_aligned: str, bam_alignedsorted: str) -> str:
@@ -195,9 +195,9 @@ def sort_sam(picard_jar: str, sam_aligned: str, bam_alignedsorted: str) -> str:
 			MAX_RECORDS_IN_RAM=2000000 \
 			SORT_ORDER=queryname
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_alignedsorted
 
 def create_sequence_dictionary(picard_jar: str, fasta: str) -> str:
@@ -215,10 +215,10 @@ def create_sequence_dictionary(picard_jar: str, fasta: str) -> str:
 				R={fasta} \
 				O={fasta_dict}
 			"""
-		log.sep('-')
+		log.sep()
 		execute(command)
 		execute(f"chmod a+rw {fasta_dict}")
-		log.sep('-')
+		log.sep()
 	return fasta_dict
 
 def merge_bam(picard_jar: str, fasta: str, bam_trimmed: str, bam_alignedsorted: str, merged_bam: str):
@@ -237,13 +237,13 @@ def merge_bam(picard_jar: str, fasta: str, bam_trimmed: str, bam_alignedsorted: 
 			SORT_ORDER=coordinate \
 			CLIP_ADAPTERS=false
 		""" # There was a q after the last 'false'?
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return merged_bam
 
 def fauxtag_exons(bam_merged: str, bam_exontagged: str) -> str:
-	log.sep('-')
+	log.sep()
 	pysam.index(bam_merged)
 	log.info(f"Faux-tagging {bam_merged} to produce {bam_exontagged}.")
 	with pysam.AlignmentFile(bam_merged, 'rb') as untagged:
@@ -253,7 +253,7 @@ def fauxtag_exons(bam_merged: str, bam_exontagged: str) -> str:
 				tags = list(query.get_tags())
 				query.set_tags(tags+exon_tags)
 				tagged.write(query)
-	log.sep('-')
+	log.sep()
 	return bam_exontagged
 
 def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umis_per_cell: int=1):
@@ -284,9 +284,9 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 			NUM_THREADS=4 \
 			OUTPUT_REPORT={report_substitution_error}
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	command = \
 		f"""
 		java -Dsamjdk.compression_level=1 -Xmx4g -jar {dropseq_jar} \
@@ -301,9 +301,9 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 			NUM_THREADS=4 \
 			OUTPUT={bam_repaired}
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_repaired
 
 # TODO: Python untested.
@@ -325,9 +325,9 @@ def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 			USE_JDK_DEFLATER=true \
 			NUM_THREADS=4
 		"""
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_output
 
 # TODO: Python untested.
@@ -350,8 +350,8 @@ def collapsetagwithcontext(dropseq_jar: str, bam: str, bam_output: str):
 			USE_JDK_INFLATER=true \
 			USE_JDK_DEFLATER=true
 		""" # COUNT_TAGS option?
-	log.sep('-')
+	log.sep()
 	execute(command)
-	log.sep('-')
+	log.sep()
 	return bam_output
 

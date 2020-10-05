@@ -76,14 +76,14 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-i', "--input-path",
 		type=Path,
-		default="./tcrgo_out/",
+		default="./out/cdr3/",
 		help="Path to folder containing files outputted by reconstruct_tcrs.py (default: %(default)s)."
 	)
 	# TODO: change this
 	parser.add_argument(
 		'-o', "--output-path", 
 		type=Path,
-		default="./tcrgo_out/",
+		default="./out/cdr3/",
 		help="The path to which the files from this program will output (default: %(default)s )."
 	)
 	args = parser.parse_args()
