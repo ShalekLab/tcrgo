@@ -153,36 +153,74 @@ class Read(object):
 			"""
 
 	def get_cdr3_positions(self, cdr3_positions: Dict[str, int]):
-		self.ref_cdr3_start = cdr3_positions[self.top_V.reference_name]
-		self.query_cdr3_start = self.top_V.query_alignment_start + self.ref_cdr3_start - self.top_V.reference_start
-		self.ref_cdr3_end = cdr3_positions[self.top_J.reference_name]
-		self.query_cdr3_end = self.top_J.query_alignment_start + self.ref_cdr3_end - self.top_J.reference_start
+		self.ref_cdr3_start = cdr3_positions[self.top_V.reference_name] - 1 # Make 0 indexed
+		self.query_cdr3_start = self.top_V.query_alignment_start - self.top_V.reference_start + self.ref_cdr3_start
+		self.ref_cdr3_end = cdr3_positions[self.top_J.reference_name] - 1 # Make 0 indexed
+		self.query_cdr3_end = self.top_J.query_alignment_start - self.top_J.reference_start + self.ref_cdr3_end 
 
 	def get_cdr3_sequence(self):
 		if self.top_J.query_alignment_end <= self.top_V.query_alignment_end:
-			log.verbose(self.VJ_alignment_stats())
-			log.verbose(self.VJ_alignment_diagram(), indent=0)
+			#log.verbose(self.VJ_alignment_stats())
+			#log.verbose(self.VJ_alignment_diagram(), indent=0)
 			log.warn(
 				f"End of J alignment ({self.top_J.query_alignment_end}) does not "
 				f"come after the end of V alignment ({self.top_V.query_alignment_end})"
 			)
-			return
-		if self.top_J.query_alignment_end >= self.query_cdr3_end: # If we have the entire J region
+		elif self.top_J.query_alignment_end >= self.query_cdr3_end: # If we have the entire J region
 			self.is_complete_cdr3 = True
-			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:self.query_cdr3_end]
+			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:self.query_cdr3_end+1]
 		else: # Incomplete CDR3
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:]
+		log.verbose(self.VJ_alignment_stats())
+		log.verbose(self.VJ_alignment_diagram_full(), indent=0)
+		log.verbose(self.cdr3)
+
+	def visualize_cigar(self, cigar: str) -> str:
+		output = ""
+		num = ""
+		for char in cigar:
+			if  47 < ord(char) < 58: # If number 0-9
+				num += char
+			else:
+				if char == 'S':
+					sym = ' '
+				elif char == 'M':
+					sym = '|'
+				else:
+					sym = char
+				output += f"{sym * int(num)}"
+				num = ""
+		return output
 
 	def VJ_alignment_diagram(self) -> str:
 		return textwrap.dedent(
 			f"""
 			{' ' * self.top_V.query_alignment_start}{self.ref_seq_V[self.top_V.reference_start:self.top_V.reference_end]}
 			{' ' * self.top_V.query_alignment_start}{'?'*(self.top_V.reference_end-self.top_V.reference_start)}
-			{' ' * int(self.query_cdr3_start - 1)}*
+			{' ' * self.query_cdr3_start}*
 			{self.top_V.query_sequence}
-			{' ' * int(self.query_cdr3_end - 1)}*
+			{' ' * self.query_cdr3_end}*
 			{' ' * self.top_J.query_alignment_start}{'?'*(self.top_J.reference_end-self.top_J.reference_start)}
 			{' ' * self.top_J.query_alignment_start}{self.ref_seq_J[self.top_J.reference_start:self.top_J.reference_end]}
+			"""
+		)
+
+	def VJ_alignment_diagram_full(self) -> str:
+		query_start = self.top_V.reference_start - self.top_V.query_alignment_start
+		j_start = query_start + self.top_J.query_alignment_start - self.top_J.reference_start
+		return textwrap.dedent(
+			f"""
+			{self.ref_seq_V}
+			{' ' * self.top_V.reference_start}{self.ref_seq_V[self.top_V.reference_start:self.top_V.reference_end]}
+			{' ' * query_start}{self.visualize_cigar(self.top_V.cigarstring)}
+			{' ' * self.ref_cdr3_start}r
+			{' ' * query_start}{' ' * self.query_cdr3_start}q
+			{' ' * query_start}{self.top_V.query_sequence}
+			{' ' * query_start}{' ' * self.query_cdr3_end}q
+			{' ' * j_start}{' '*self.ref_cdr3_end}r
+			{' ' * query_start}{self.visualize_cigar(self.top_J.cigarstring)}
+			{' ' * query_start}{' '*self.top_J.query_alignment_start}{self.ref_seq_J[self.top_J.reference_start:self.top_J.reference_end]}
+			{' ' * j_start}{self.ref_seq_J}
 			"""
 		)
 

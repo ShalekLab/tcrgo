@@ -94,25 +94,21 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 			count_unmapped += 1
 			continue
 		if "TRAV" in alignment.reference_name or "TRBV" in alignment.reference_name:
-			#query_set = queries_V
 			queries_V.add(id_query)
 		elif "TRAJ" in alignment.reference_name or "TRBJ" in alignment.reference_name:
-			#query_set = queries_J
 			queries_J.add(id_query)
-		#else:
-		#	continue
-		#query_set.add(id_query)
 	log.info(f"Found and ignored {count_unmapped} unmapped reads.")
 	queries_VJ = queries_V & queries_J
 	queries_nonVJ = queries_all - queries_VJ
 	return queries_VJ, queries_nonVJ
 
-def filter_queries(queries_VJ: Set[str], num_queries_min: int, num_queries_max: int) -> DefaultDict[str, List[str]]:
+def filter_queries(queries_VJ: Set[str], num_queries_min: int, num_queries_max: int, seed: int=2020) -> DefaultDict[str, List[str]]:
 	id_queries = defaultdict(list)
 	for id_query in queries_VJ:
 		barcode_umi = '|'.join(id_query.split('|')[:2])
 		id_queries[barcode_umi].append(id_query)
 	ids_to_drop = list()
+	random.seed(seed)
 	for barcode_umi, queries in id_queries.items():
 		num_queries = len(queries)
 		if num_queries < num_queries_min:

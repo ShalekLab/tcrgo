@@ -148,7 +148,7 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'-o', "--output-path", 
 		type=str,
-		default="./tcrgo_out/alignment/",
+		default="./out/alignment/",
 		help="The path to which the files from this program will output. (default: %(default)s )."
 	)
 	args = parser.parse_args()

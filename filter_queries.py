@@ -41,7 +41,7 @@ def main(args):
 	log.info(f"Filtering out UMIs with VJ below {args.minimum_reads} reads and randomly "
 			f"subsampling those with reads exceeding {args.maximum_reads} reads.")
 	log.info(f"Will be writing filtered queries containing V and J to {args.workers} file(s).")
-	id_queries = io.filter_queries(queries_VJ, args.minimum_reads, args.maximum_reads) # Split by delim '|' to convert to dictionary of BC|UMI : QNAME
+	id_queries = io.filter_queries(queries_VJ, args.minimum_reads, args.maximum_reads, args.seed) # Split by delim '|' to convert to dictionary of BC|UMI : QNAME
 	io.output_grouped_VJ_queries(id_queries, args.workers, args.output_path)
 	log.success("Done!")
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
 		metavar="<ALIGNED BAM FROM ALIGNMENT SCRIPT>",
 		help=
 			"Path to single-end tagged, trimmed, aligned, repaired BAM. IMPORTANT: "
-			"We strongly recommend using the alignment script to create this BAM."
+			"It is strongly recommended you use the alignment script to create this BAM."
 	)
 
 	# OPTIONAL ARGUMENTS
@@ -97,6 +97,14 @@ if __name__ == "__main__":
 		help=
 			"UMIs with more than the maximum number of reads will have their reads"
 			"randomly subsampled down to the maximum (default: %(default)d)."
+	)
+	parser.add_argument(
+		'-s', "--seed",
+		type=int,
+		default=2020,
+		help=
+			"The seed for pseudo-random subsampling of reads for UMIs that"
+			"exceed the maximum number of reads (default: %(default)d)."
 	)
 	parser.add_argument(
 		'-o', "--output-path", 
