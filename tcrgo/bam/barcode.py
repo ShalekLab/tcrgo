@@ -59,7 +59,6 @@ class Barcode(object):
 		return self._values()
 
 	def resolve_cdr3s(self):
-		#for other_chain in ("TRA", "TRB"):
 		leaders = Counter()
 		candidates = Counter() # In case no leaders
 		umis_contested = list()
@@ -67,9 +66,10 @@ class Barcode(object):
 		for umi in self.get_umis():
 			if umi.top_cdr3 is None: #or other_chain in umi.top_VJ:
 				continue
-			if len(umi.top_cdr3) == 0:
-				umi.top_cdr3 = None
-			elif len(umi.top_cdr3) == 1:
+			#if len(umi.top_cdr3) == 0:
+			#	umi.top_cdr3 = None
+			#elif len(umi.top_cdr3) == 1:
+			if len(umi.top_cdr3) == 1:
 				umi.top_cdr3 = umi.top_cdr3.pop()
 				leaders[umi.top_cdr3] += 1
 				candidates[umi.top_cdr3] += 1

@@ -46,6 +46,7 @@ def compare(info_control: str, infos_variable: Dict[str, str]):
 	control.reset_index(drop=True)
 	control.to_csv("COMPARISONS.tsv", sep='\t', header=True, index=False)
 
+# This should be checking the reverse complement of the sequence but it isn't.
 def id_in_read(bam):
 	count = 0
 	count_total = 0
@@ -60,14 +61,6 @@ def id_in_read(bam):
 				break
 		count_total += 1
 	print(count, count_total, count/count_total)
-	"""
-	for region in ("TRAC", "TRBC"):
-		for alignment in bam.fetch(region):
-			id = alignment.get_tag("XC") + alignment.get_tag("XU")
-			for i in range(0, len(id)-5):
-				if alignment.query_sequence.startswith(id[i:]):
-					print('\t'.join([alignment.reference_name, alignment.query_name, alignment.query_sequence, id, id[i:], str(i)]))
-	"""
 
 # do you think you could prepare some examples of umis and bc's whose top V/J's are changing 
 # and the actual sequences of the reads that are mapping to these different V/J's 
@@ -262,7 +255,6 @@ def analyze_bcumi(bam, ids_select, id_queries, cdr3_file, fasta):
 							f"{VJ_cdr3_counts[top_VJ_cdr3]}\t{VJ_cdr3_counts[top_VJ_cdr3]/VJ_counts[top_VJ]:.3f}\t"
 							f"{VJ_cdr3_counts[top_VJ_cdr3]/sum_VJ_cdr3s:.3f}\t{cdr3_counts[cdr3]}\t{cdr3_counts[cdr3]/sum_cdr3s:.3f}\n"
 						)
-
 	print("DONE")
 
 def main():

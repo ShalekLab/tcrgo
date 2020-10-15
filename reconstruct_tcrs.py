@@ -58,7 +58,6 @@ def main(args):
 					read.get_cdr3_sequence()
 				umi.cdr3_candidates(args.minimum_cdr3s)
 			#barcode.resolve_cdr3s() # TODO: Edit distance on barcode level. Should probably weight by freq
-
 	
 	log.info("Finished reconstructing CDR3 sequences for all reads")
 	bamdict.write_cdr3_info(args.worker, args.output_path)

@@ -154,12 +154,10 @@ class BAMDict(object):
 				"TRBV_nReads\tTRBJ_nReads\tTRBC_nReads\t"
 				"UNKN_nReads\n"
 			)
-			b = 0
+			b = 1
 			for barcode_seq, barcode in self.items():
-				u = 0
-				b += 1
+				u = 1
 				for umi_seq, umi in barcode.items():
-					u += 1
 					cdr3_info.write(
 						f"{b}\t{u}\t{barcode_seq}\t{umi_seq}\t{len(umi)}\t"
 						f"{umi.top_VJ}\t{umi.count_top_VJ}\t{umi.frequency_top_VJ}\t"
@@ -168,118 +166,12 @@ class BAMDict(object):
 						f"{umi.counts_region['TRBV']}\t{umi.counts_region['TRBJ']}\t{umi.counts_region['TRBC']}\t"
 						f"{umi.counts_region['UNKN']}\n"
 					)
+					u += 1
+				b += 1
 
 	#########################################################################
 	#	Below is hacky, deprecated code that will be removed eventually
 	#########################################################################
-
-	@log.time
-	def parse_queries_regions(self) -> Tuple[Set[str], DefaultDict[str, Set[str]]]:
-		queries_V = set()
-		queries_J = set()
-		queries_regions = defaultdict(set)
-		for alignment in self.bam.fetch():
-			if alignment.is_unmapped:
-				log.verbose(f"Read {alignment.query_name} is unmapped, skipping")
-				continue
-			queries_regions[alignment.query_name].add(alignment.reference_name)
-			if 'V' in alignment.reference_name:
-				queries_V.add(alignment.query_name)
-			elif 'J' in alignment.reference_name:
-				queries_J.add(alignment.query_name)
-		queries_VJ = queries_V & queries_J
-		return queries_VJ, queries_regions
-
-	@log.time		
-	def _OLDv2_parse_bam(self, query_names: Set[str]): #queries_regions: DefaultDict[str, Set[str]]):
-		log.info("Building BAM Index for fetching VJ queries")
-		bam_indexed = pysam.IndexedReads(self.bam)
-		bam_indexed.build()
-		log.info("Built")
-
-		count = 0
-		for query_name in query_names:
-			read = Read(query_name)
-			#read.unique_subregions = queries_regions[query_names]
-			read.get_alignments(bam_indexed)
-			if read.top_V is None or read.top_J is None:
-				log.error("Couldn't get a top V or J for {query_name}")
-
-			tags = dict(read.top_V.tags)
-			barcode = tags["XC"]
-			if barcode not in self:
-				self[barcode] = Barcode(barcode)
-			umi = tags["XU"]
-			if umi not in self[barcode]:
-				self[barcode][umi] = UMI(umi)
-			self[barcode][umi][query_name] = read
-
-			count += 1
-			if count % 10000 == 0:
-				log.info(f"Processed {count} reads of {len(query_names)}")
-
-	def _OLDv1_parse_bam(self, bam: BAM):
-		"""Different approach"""
-		for alignment in bam.fetch():
-			tags = dict(alignment.tags)
-			barcode = tags["XC"]
-			umi = tags["XU"]
-			read = alignment.query_name
-			log.info(f"{barcode} {umi} {read}")
-
-			if alignment.is_unmapped:
-				log.verbose(f"Read {alignment} is unmapped, skipping")
-				continue
-			
-			if barcode not in self:
-				log.verbose(f"Adding Barcode {barcode}")
-				self[barcode] = Barcode(barcode)
-			if umi not in self[barcode]:
-				log.verbose(f"Adding UMI {umi}")
-				self[barcode][umi] = UMI(umi)
-			if read not in self[barcode][umi]:
-				log.verbose(f"Adding Read {umi}")
-				self[barcode][umi][read] = Read(read)
-			
-			self[barcode][umi][read].append(alignment)
-			self[barcode][umi][read].unique_subregions.add(alignment.reference_name)
-			log.verbose(f"Current # Alignments: {len(self[barcode][umi][read])}")
-
-	def _discard_single_alignments(self):
-		"""Used with the _OLD_parse_bam approach."""
-		single_alignment_reads = []
-		for barcode_seq, barcode in self.items():
-			for umi_seq, umi in barcode.items():
-				for read_qname in umi.get_read_query_names():
-					if len(self[barcode_seq][umi_seq][read_qname]) == 1:
-						single_alignment_reads.append( (barcode_seq, umi_seq, read_qname) )
-		for barcode_seq, umi_seq, read_qname in single_alignment_reads:
-			del self[barcode_seq][umi_seq][read_qname]
-
-	@log.time
-	def parse_queries_full(self):
-		count = 0
-		total_reads = self.bam.count()
-
-		for alignment in self.bam.fetch():
-			tags = dict(alignment.tags)
-			barcode = tags["XC"]
-			umi = tags["XU"]
-			read = alignment.query_name
-			
-			if barcode not in self:
-				self[barcode] = Barcode(barcode)
-			if umi not in self[barcode]:
-				self[barcode][umi] = UMI(umi)
-			if read not in self[barcode][umi]:
-				self[barcode][umi][read] = Read(read)
-			
-			self[barcode][umi][read].append(alignment)
-			
-			count += 1 
-			if count % 100000 == 0:
-				log.info(f"Parsed {count} of {total_reads} reads.")
-
 
 	@log.time
 	def write_reads(self, fasta: FASTA, cdr3_positions: Dict[str, int]):

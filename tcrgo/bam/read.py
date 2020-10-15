@@ -27,7 +27,6 @@ class Read(object):
 		self.top_V = None
 		#self.top_index_V = -1 # for explore.py
 		#self.top_index_J = -1 # for explore.py
-		self.is_TRA = None # Pretty sure this is only used within one function
 		self.cdr3 = None
 		self.is_complete_cdr3 = False
 		self.has_region = defaultdict(bool)
@@ -139,16 +138,13 @@ class Read(object):
 							break
 					else:
 						self.has_region["UNKN"] = True
+		"""
 		if "TRA" in self.top_V.reference_name and "TRA" in self.top_J.reference_name:
-			self.is_TRA = True
+			
 		elif "TRB" in self.top_V.reference_name and "TRB" in self.top_J.reference_name:
-			self.is_TRA = False
+			
 		else: #TODO: This is debug. If ever happens, what do?
-			log.warn("We have a top TRA/TRB combo!") 
-			log.sep()
-			log.verbose(self.alignment_info(self.top_V))
-			log.verbose(self.alignment_info(self.top_J))
-			log.sep()
+		"""
 			""" # DEV: For writing TRA/TRB combos to file
 			if not osp.isfile("TRABcombos.tsv"):
 				with open("TRABcombos.tsv", 'w') as combos:

@@ -123,7 +123,7 @@ class UMI(object):
 							elif count == max_count:
 								top_cdr3s.add(cdr3)
 			if top_cdr3s is not None:
-				# TODO: HAMMING DISTANCE, any remaining ties keep as a set, resolve on barcode level
+				# TODO: LEVENSHTEIN DISTANCE, any remaining ties keep as a set, resolve on barcode level
 				if not self.is_complete_cdr3:
 					top_cdr3s = {cdr3+'_' for cdr3 in top_cdr3s}
 				self.top_cdr3 = top_cdr3s
