@@ -16,6 +16,7 @@ from tcrgo import Log
 log = Log(name=__name__)
 
 def main(args):
+	log.init(args.verbosity)
 	worker_range = [int(i) for i in args.workers.strip(':').split(':')]
 	if worker_range[0] < 1:
 		log.error("Please enter positive value for the start of the range.")

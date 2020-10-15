@@ -46,16 +46,19 @@ def main(args):
 	fasta = pysam.FastaFile(args.fasta)
 
 	log.info(f"{len(bamdict.get_umis())}")
-	for umi in bamdict.get_umis():
-		umi.count_regions()
-		umi.find_top_VJ()
-		if umi.frequency_top_VJ >= args.minimum_frequency:
-			for read in umi.reads_top_VJ:
-				read.get_cdr3_positions(cdr3_positions)
-				read.ref_seq_V = fasta.fetch(read.top_V.reference_name)
-				read.ref_seq_J = fasta.fetch(read.top_J.reference_name)
-				read.get_cdr3_sequence()
-			umi.resolve_tcr_identity()
+	for barcode in bamdict.get_barcodes():
+		for umi in barcode.get_umis():
+			umi.count_regions()
+			umi.find_top_VJ()
+			if umi.frequency_top_VJ >= args.minimum_frequency:
+				for read in umi.reads_top_VJ:
+					read.get_cdr3_positions(cdr3_positions)
+					read.ref_seq_V = fasta.fetch(read.top_V.reference_name)
+					read.ref_seq_J = fasta.fetch(read.top_J.reference_name)
+					read.get_cdr3_sequence()
+				umi.cdr3_candidates(args.minimum_cdr3s)
+			#barcode.resolve_cdr3s() # TODO: Edit distance on barcode level. Should probably weight by freq
+
 	
 	log.info("Finished reconstructing CDR3 sequences for all reads")
 	bamdict.write_cdr3_info(args.worker, args.output_path)
@@ -113,12 +116,20 @@ if __name__ == "__main__":
 		help="The number ID of the worker which will read queries<W>.txt  (default: %(default)d)."
 	)
 	parser.add_argument(
-		'-m', "--minimum_frequency",
+		'-mf', "--minimum-frequency",
 		type=float,
 		default=0.3,
 		help=
 			"UMIs whose top VJ combination frequency is beneath the minimum frequency "
 			"will not undergo CDR3 sequence reconstruction (default: %(default)d)."
+	)
+	parser.add_argument(
+		'-mc', "--minimum-cdr3s",
+		type=int,
+		default=5,
+		help=
+			"UMIs with less than the minimum number of reads which have recovered CDR3s"
+			"will not have their CDR3 statistics reported (default: %(default)d)."
 	)
 	# TODO: Implement
 	parser.add_argument(

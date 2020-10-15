@@ -85,6 +85,7 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 	queries_J = set()
 	queries_all = set()
 	count_unmapped = 0
+	count_reverse = 0
 	for alignment in bam: # .fetch():
 		barcode = alignment.get_tag("XC")
 		umi = alignment.get_tag("XU")
@@ -93,11 +94,14 @@ def parse_queries(bam: BAM) -> Tuple[Set[str], Set[str]]:
 		if alignment.is_unmapped:
 			count_unmapped += 1
 			continue
+		if alignment.is_reverse:
+			count_reverse += 1
+			continue
 		if "TRAV" in alignment.reference_name or "TRBV" in alignment.reference_name:
 			queries_V.add(id_query)
 		elif "TRAJ" in alignment.reference_name or "TRBJ" in alignment.reference_name:
 			queries_J.add(id_query)
-	log.info(f"Found and ignored {count_unmapped} unmapped reads.")
+	log.info(f"Found and ignored {count_unmapped} unmapped reads and {count_reverse} reverse mapped reads.")
 	queries_VJ = queries_V & queries_J
 	queries_nonVJ = queries_all - queries_VJ
 	return queries_VJ, queries_nonVJ

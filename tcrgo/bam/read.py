@@ -27,7 +27,7 @@ class Read(object):
 		self.top_V = None
 		#self.top_index_V = -1 # for explore.py
 		#self.top_index_J = -1 # for explore.py
-		self.is_TRA = None
+		self.is_TRA = None # Pretty sure this is only used within one function
 		self.cdr3 = None
 		self.is_complete_cdr3 = False
 		self.has_region = defaultdict(bool)
@@ -40,6 +40,12 @@ class Read(object):
 		self.query_cdr3_end = None
 		self.ref_seq_J = ""
 		self.ref_seq_V = ""
+
+		self.scores = dict()
+		self.cigars = dict()
+		self.edit_distances = dict()
+		self.mapqs = dict()
+		self.phreds = dict()
 
 	def __len__(self) -> int:
 		return len(self.alignments)
@@ -140,10 +146,10 @@ class Read(object):
 		else: #TODO: This is debug. If ever happens, what do?
 			log.warn("We have a top TRA/TRB combo!") 
 			log.sep()
-			log.info(self.alignment_info(self.top_V))
-			log.info(self.alignment_info(self.top_J))
+			log.verbose(self.alignment_info(self.top_V))
+			log.verbose(self.alignment_info(self.top_J))
 			log.sep()
-			"""
+			""" # DEV: For writing TRA/TRB combos to file
 			if not osp.isfile("TRABcombos.tsv"):
 				with open("TRABcombos.tsv", 'w') as combos:
 					combos.write('\t'.join(["QNAME", "REF", "SCORE", "CIGAR", "PHRED", "EDIST", "FLAG", "MAPQ"])+'\n')
@@ -153,6 +159,17 @@ class Read(object):
 			"""
 
 	def get_cdr3_positions(self, cdr3_positions: Dict[str, int]):
+		""" TODO: I don't think this handles deletions! Check
+		if 'D' in self.top_V.cigarstring:
+			deletion_positions = [distinct deletion positions in query]
+			deletion_gaps = [number of bases deleted]
+			for i in range(len(deletion_positions)):
+				if deletion_positions[i] + deletion_gaps[i]-1 <= cdr3_query_start:
+					cdr3_query_start -= 1
+					cdr3_query_end -= 1
+				elif deletion_positions[i] + deletion_gaps[i]-1 <= cdr3_query_end:
+					cdr3_query_end -= 1
+		"""
 		self.ref_cdr3_start = cdr3_positions[self.top_V.reference_name] - 1 # Make 0 indexed
 		self.query_cdr3_start = self.top_V.query_alignment_start - self.top_V.reference_start + self.ref_cdr3_start
 		self.ref_cdr3_end = cdr3_positions[self.top_J.reference_name] - 1 # Make 0 indexed
@@ -171,9 +188,9 @@ class Read(object):
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:self.query_cdr3_end+1]
 		else: # Incomplete CDR3
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:]
-		log.verbose(self.VJ_alignment_stats())
-		log.verbose(self.VJ_alignment_diagram_full(), indent=0)
-		log.verbose(self.cdr3)
+		#log.verbose(self.VJ_alignment_stats())
+		#log.verbose(self.VJ_alignment_diagram_full(), indent=0)
+		#log.verbose(self.cdr3)
 
 	def visualize_cigar(self, cigar: str) -> str:
 		output = ""
@@ -186,6 +203,8 @@ class Read(object):
 					sym = ' '
 				elif char == 'M':
 					sym = '|'
+				elif char == 'D':
+					sym = 'x'
 				else:
 					sym = char
 				output += f"{sym * int(num)}"
@@ -196,11 +215,13 @@ class Read(object):
 		return textwrap.dedent(
 			f"""
 			{' ' * self.top_V.query_alignment_start}{self.ref_seq_V[self.top_V.reference_start:self.top_V.reference_end]}
+			{self.visualize_cigar(self.top_V.cigarstring)}
 			{' ' * self.top_V.query_alignment_start}{'?'*(self.top_V.reference_end-self.top_V.reference_start)}
 			{' ' * self.query_cdr3_start}*
 			{self.top_V.query_sequence}
 			{' ' * self.query_cdr3_end}*
 			{' ' * self.top_J.query_alignment_start}{'?'*(self.top_J.reference_end-self.top_J.reference_start)}
+			{self.visualize_cigar(self.top_J.cigarstring)}
 			{' ' * self.top_J.query_alignment_start}{self.ref_seq_J[self.top_J.reference_start:self.top_J.reference_end]}
 			"""
 		)
@@ -263,27 +284,3 @@ class Read(object):
 			TOPV:	{self.top_V.reference_name if self.top_V is not None else self.top_V}
 			TOPJ:	{self.top_J.reference_name if self.top_J is not None else self.top_J}
 			"""
-	
-	#########################################################################
-	#	Below is deprecated code that will be removed eventually
-	#########################################################################
-
-	def get_top_subregion_alignment(self, subregion: str) -> AlignedSegment:
-		"""For use with _OLD_parse_bam"""
-		top_score = 0
-		top_alignment = None
-		for alignment in self.alignments:
-			if subregion in alignment.reference_name:
-				self.unique_subregions.add(alignment.reference_name)
-				tags = dict(alignment.tags)
-				score = tags["AS"]
-				best_score = tags["XS"]
-				if score == best_score:
-					log.verbose("Found best alignment for query")
-					return alignment
-				log.verbose(f"score for {alignment.reference_name} is {score}, will{' NOT' if score <= top_score else ''} beat {top_score}")	
-				if score > top_score: # TODO: What happens if it ties?
-					top_alignment = alignment
-					top_score = score
-					log.verbose(f"Beat score, now top region is {top_alignment.reference_name} with AS {top_score}")			
-		return top_alignment

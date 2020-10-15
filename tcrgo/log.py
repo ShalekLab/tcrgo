@@ -107,7 +107,7 @@ class Log(object):
 		self.info(str(character*width))
 		Formatter.info_fmt = format_original
 	
-	def set_level(self, level):
+	def set_level(self, level="NOTSET"):
 		if level == "NOTSET":
 			level = logging.NOTSET
 		elif level == "INFO":
@@ -134,8 +134,9 @@ class Log(object):
 		Formatter.info_fmt = format_original
 		self.formatter.datefmt = "%H:%M:%S"
 
-	def proceed(self):
+	def proceed(self, level="NOTSET"):
 		self.formatter.datefmt = "%H:%M:%S"
+		#self.set_level(level)
 
 	def close(self):
 		self.sep('=')

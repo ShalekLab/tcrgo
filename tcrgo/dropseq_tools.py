@@ -4,10 +4,10 @@ Subprocess calls to Drop-seq Tools
 import subprocess as sp
 import pysam
 import os
+from textwrap import dedent
 
 from pathlib import Path
 from typing import List, Tuple, Dict
-from textwrap import dedent
 
 from tcrgo.log import Log
 log = Log(name=__name__)
@@ -33,13 +33,24 @@ def test_tools(dropseq_jar: str, picard_jar: str):
 		log.error(f"Could not find {picard_jar}")
 	execute("bowtie2 --version")
 
-def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam_unmapped: str) -> str:
+def bam_to_fastq(bam: str, fastq: str) -> str:
+	command = f"samtools bam2fq -0 {fastq} {bam}"
+	execute(command)
+	return fastq
+
+def transform_read_data(fastq: str, sample_name: str) -> Tuple[str, str]:
+	execute("chmod +x transform_read_data.sh")
+	command = f"./transform_read_data.sh {fastq} {sample_name}"
+	execute(command)
+	return f"{sample_name}_Read1.fastq", f"{sample_name}_TCRreadFinal.fastq"
+
+def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam_unmapped: str, sample_name: str) -> str:
 	"""Convert FASTQ R1 and R2 to unmapped BAM using Picard's FastqToSam"""
 	command = \
 		f"""
 		java -Dsamjdk.compression_level=6 -Xmx4g -jar {picard_jar} FastqToSam \
+			SAMPLE_NAME={sample_name} \
 			OUTPUT={bam_unmapped} \
-			USE_SEQUENTIAL_FASTQS=true \
 			FASTQ={fastq_barcode} \
 			FASTQ2={fastq_biological} \
 			QUALITY_FORMAT=Standard \
@@ -74,14 +85,16 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 			BARCODED_READ=1 \
 			DISCARD_READ=false \
 			TAG_NAME=XC \
-			NUM_BASES_BELOW_QUALITY=1
+			NUM_BASES_BELOW_QUALITY=1 \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
 		"""
 	log.sep()
 	execute(command)
 	log.sep()
 	command = \
 		f"""
-		java -Dsamjdk.compression_level=6 -Xmx4000m -jar {dropseq_jar} \
+		java -Xmx4000m -jar {dropseq_jar} \
 			TagBamWithReadSequenceExtended VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_celltagged} \
 			OUTPUT={bam_idtagged} \
@@ -92,7 +105,9 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 			BARCODED_READ=1 \
 			DISCARD_READ=true \
 			TAG_NAME=XU \
-			NUM_BASES_BELOW_QUALITY=1
+			NUM_BASES_BELOW_QUALITY=1 \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
 		"""
 	log.sep()
 	execute(command)
@@ -169,9 +184,11 @@ def align_bam(bam_trimmed: str, fasta: str, sam_aligned: str) -> str:
 	"""Convert SAM to FASTQ using Picard then align to reference using STAR"""
 	if not sam_aligned.endswith("_aligned.sam"):
 		log.error("sam_aligned must end in '_aligned.sam'.")
-	bam_detagged = remove_scoretags(bam_trimmed) # Avoid preserving empty score tags
-	bam_sorted = bam_detagged.replace("_detagged.bam", "_sorted.bam")
-	pysam.sort("-n", "-o", bam_sorted, bam_detagged) # Sort by QNAME
+	#bam_detagged = remove_scoretags(bam_trimmed) # Avoid preserving empty score tags
+	#bam_sorted = bam_detagged.replace("_detagged.bam", "_sorted.bam")
+	bam_sorted = bam_trimmed.replace("_trimmed.bam", "_sorted.bam")
+	#pysam.sort("-n", "-o", bam_sorted, bam_detagged) # Sort by QNAME
+	pysam.sort("-n", "-o", bam_sorted, bam_trimmed) # Sort by QNAME
 	pysam.index(bam_sorted)
 
 	index_prefix = os.path.basename(fasta.split('.')[0])
@@ -306,7 +323,7 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 	log.sep()
 	return bam_repaired
 
-# TODO: Python untested.
+# TODO: Python not integrated into script.
 def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 	command = \
 		f"""
@@ -331,7 +348,7 @@ def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 	return bam_output
 
 # TODO: Python untested.
-def collapsetagwithcontext(dropseq_jar: str, bam: str, bam_output: str):
+def collapseumiswithcontext(dropseq_jar: str, bam: str, bam_output: str):
 	command = \
 		f"""
 		java -Xmx4g -jar {dropseq_jar} CollapseTagWithContext \
@@ -355,3 +372,28 @@ def collapsetagwithcontext(dropseq_jar: str, bam: str, bam_output: str):
 	log.sep()
 	return bam_output
 
+# TODO: Python untested.
+def collapsebarcodeswithcontext(dropseq_jar: str, bam: str, bam_output: str):
+	command = \
+		f"""
+		java -Xmx16g -jar {dropseq_jar} CollapseTagWithContext \
+			VERBOSITY=DEBUG \
+			INPUT={bam} \
+			COLLAPSE_TAG=XC \
+			CONTEXT_TAGS=gf \
+			OUT_TAG=XC \
+			OUTPUT={bam_output} \
+			EDIT_DISTANCE=1 \
+			FIND_INDELS=true \
+			READ_MQ=10
+			MIN_COUNT=1 \
+			DROP_SMALL_COUNTS=false \
+			NUM_THREADS=12 \
+			USE_JDK_INFLATER=true \
+			USE_JDK_DEFLATER=true \
+			LOW_MEMORY_MODE=true
+		""" # COUNT_TAGS option?
+	log.sep()
+	execute(command)
+	log.sep()
+	return bam_output
