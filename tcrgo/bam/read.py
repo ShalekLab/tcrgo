@@ -145,14 +145,14 @@ class Read(object):
 			
 		else: #TODO: This is debug. If ever happens, what do?
 		"""
-			""" # DEV: For writing TRA/TRB combos to file
-			if not osp.isfile("TRABcombos.tsv"):
-				with open("TRABcombos.tsv", 'w') as combos:
-					combos.write('\t'.join(["QNAME", "REF", "SCORE", "CIGAR", "PHRED", "EDIST", "FLAG", "MAPQ"])+'\n')
-			with open("TRABcombos.tsv", 'a') as combos:
-				combos.write(self.alignment_info_line(self.top_V))
-				combos.write(self.alignment_info_line(self.top_J))
-			"""
+		""" # DEV: For writing TRA/TRB combos to file #was idented
+		if not osp.isfile("TRABcombos.tsv"):
+			with open("TRABcombos.tsv", 'w') as combos:
+				combos.write('\t'.join(["QNAME", "REF", "SCORE", "CIGAR", "PHRED", "EDIST", "FLAG", "MAPQ"])+'\n')
+		with open("TRABcombos.tsv", 'a') as combos:
+			combos.write(self.alignment_info_line(self.top_V))
+			combos.write(self.alignment_info_line(self.top_J))
+		"""
 
 	def get_cdr3_positions(self, cdr3_positions: Dict[str, int]):
 		""" TODO: I don't think this handles deletions! Check
