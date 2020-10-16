@@ -1,7 +1,7 @@
 import pysam
 import textwrap
 import re
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, OrderedDict
 
 # TODO: See if can reimplement class using this article:
 # https://treyhunner.com/2019/04/why-you-shouldnt-inherit-from-list-and-dict-in-python/ 
@@ -25,12 +25,11 @@ class Read(object):
 		self.alignments = list()
 		self.top_J = None
 		self.top_V = None
-		#self.top_index_V = -1 # for explore.py
-		#self.top_index_J = -1 # for explore.py
 		self.cdr3 = None
 		self.is_complete_cdr3 = False
 		self.has_region = defaultdict(bool)
 		self.ties = Counter()
+		
 		# TODO: Consider getting rid of these and finding
 		# way to reconfigure VJ_alignment_stats+_diagram
 		self.ref_cdr3_start = None
@@ -40,6 +39,8 @@ class Read(object):
 		self.ref_seq_J = ""
 		self.ref_seq_V = ""
 
+		#self.top_index_V = -1 # for explore.py
+		#self.top_index_J = -1 # for explore.py
 		self.scores = dict()
 		self.cigars = dict()
 		self.edit_distances = dict()
@@ -113,7 +114,6 @@ class Read(object):
 				top_score = score
 		return top_alignment, top_score
 
-	# TODO: Normalize AS by length of ??? ?
 	def parse_alignments(self, bam_indexed: IndexedReads):
 		top_score_J = 0
 		top_score_V = 0
@@ -138,38 +138,69 @@ class Read(object):
 							break
 					else:
 						self.has_region["UNKN"] = True
-		"""
-		if "TRA" in self.top_V.reference_name and "TRA" in self.top_J.reference_name:
-			
-		elif "TRB" in self.top_V.reference_name and "TRB" in self.top_J.reference_name:
-			
-		else: #TODO: This is debug. If ever happens, what do?
-		"""
-		""" # DEV: For writing TRA/TRB combos to file #was idented
-		if not osp.isfile("TRABcombos.tsv"):
-			with open("TRABcombos.tsv", 'w') as combos:
-				combos.write('\t'.join(["QNAME", "REF", "SCORE", "CIGAR", "PHRED", "EDIST", "FLAG", "MAPQ"])+'\n')
-		with open("TRABcombos.tsv", 'a') as combos:
-			combos.write(self.alignment_info_line(self.top_V))
-			combos.write(self.alignment_info_line(self.top_J))
+		""" # TODO: How to discard TRAB combos? Set both top_J and top_V as None? That'd discount from statistics?
+		VJ = self.top_V.reference_name + self.top_J.reference_name
+		if "TRA" in VJ and "TRB" in VJ: 
+			if not osp.isfile("TRABcombos.tsv"):
+				with open("TRABcombos.tsv", 'w') as combos:
+					combos.write('\t'.join(["QNAME", "REF", "SCORE", "CIGAR", "PHRED", "EDIST", "FLAG", "MAPQ"])+'\n')
+			with open("TRABcombos.tsv", 'a') as combos:
+				combos.write(self.alignment_info_line(self.top_V))
+				combos.write(self.alignment_info_line(self.top_J))
 		"""
 
+	def get_deletion_positions(self, cigar: str) -> Dict[int, int]:
+		deletion_positions = dict()
+		num = ""
+		position = 0
+		for char in cigar:
+			if  47 < ord(char) < 58: # If number 0-9
+				num += char
+			elif char == 'D':
+				deletion_positions[position] = int(num) # Key: start, value: width
+			else: # Letter that isn't D
+				position += int(num) - 1
+				num = ""
+		return deletion_positions
+
 	def get_cdr3_positions(self, cdr3_positions: Dict[str, int]):
-		""" TODO: I don't think this handles deletions! Check
-		if 'D' in self.top_V.cigarstring:
-			deletion_positions = [distinct deletion positions in query]
-			deletion_gaps = [number of bases deleted]
-			for i in range(len(deletion_positions)):
-				if deletion_positions[i] + deletion_gaps[i]-1 <= cdr3_query_start:
-					cdr3_query_start -= 1
-					cdr3_query_end -= 1
-				elif deletion_positions[i] + deletion_gaps[i]-1 <= cdr3_query_end:
-					cdr3_query_end -= 1
-		"""
 		self.ref_cdr3_start = cdr3_positions[self.top_V.reference_name] - 1 # Make 0 indexed
 		self.query_cdr3_start = self.top_V.query_alignment_start - self.top_V.reference_start + self.ref_cdr3_start
 		self.ref_cdr3_end = cdr3_positions[self.top_J.reference_name] - 1 # Make 0 indexed
-		self.query_cdr3_end = self.top_J.query_alignment_start - self.top_J.reference_start + self.ref_cdr3_end 
+		self.query_cdr3_end = self.top_J.query_alignment_start - self.top_J.reference_start + self.ref_cdr3_end 	
+		# This code works well! It just doesn't really make much of a difference in the big picture.
+		# I also don't know if it's worth potentially biasing against nDeletionsBefore%3!=0 
+		# so I'm disabling for now.
+		# Also just occurred to me that there may be deletions upstream of the query_sequence
+		# sooo maybe reads with nDels % 3 != 0 can still be viable. Can't tell without ORF context.
+		# I think it's worth talking to Sarah about what should be done here and for insertions.
+		# Probably should just scrap top VJ and for the de Bruijn graph sequence assembly method anyways.
+		"""
+		if 'D' in self.top_V.cigarstring:
+			deletion_positions = self.get_deletion_positions(self.top_V.cigarstring)
+			deletions_before = 0
+			for gap_start, gap_width in reversed(deletion_positions.items()):
+				gap_end = gap_start + gap_width-1
+				if gap_start <= self.query_cdr3_start <= gap_end:
+					break
+				elif gap_end < self.query_cdr3_start:
+					deletions_before += gap_width
+			if deletions_before % 3 == 0:
+				self.query_cdr3_start -= deletions_before
+		"""
+		# I don't think adjusting the J end is as important. Might be hurtful for analysis.
+		# This code needs rewriting if we want something like it.
+		""" 
+		if 'D' in self.top_J.cigarstring:
+			deletion_positions = self.get_deletion_positions(self.top_J.cigarstring)
+			for gap_start, gap_width in reversed(deletion_positions.items()):
+				gap_end = gap_start + gap_width-1
+				if gap_start <= self.query_cdr3_end <= gap_end:
+					break
+				if gap_end < self.query_cdr3_end - 2:
+					self.query_cdr3_end -= gap_width
+		"""
+
 
 	def get_cdr3_sequence(self):
 		if self.top_J.query_alignment_end <= self.top_V.query_alignment_end:
@@ -184,9 +215,14 @@ class Read(object):
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:self.query_cdr3_end+1]
 		else: # Incomplete CDR3
 			self.cdr3 = self.top_V.query_sequence[self.query_cdr3_start:]
-		#log.verbose(self.VJ_alignment_stats())
-		#log.verbose(self.VJ_alignment_diagram_full(), indent=0)
-		#log.verbose(self.cdr3)
+		for char in self.top_V.cigarstring:
+			if 47 >= ord(char) or ord(char) >= 58:
+				if char not in "SMDI":
+					log.verbose(self.top_V.cigarstring)
+		for char in self.top_J.cigarstring:
+			if 47 >= ord(char) or ord(char) >= 58:
+				if char not in "SMDI":
+					log.verbose(self.top_J.cigarstring)
 
 	def visualize_cigar(self, cigar: str) -> str:
 		output = ""

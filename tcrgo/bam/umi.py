@@ -116,12 +116,12 @@ class UMI(object):
 			for cdr3, count in counts_cdr3.items():
 				if len(cdr3) >= 15:
 					if cdr3.startswith("TGT") or cdr3.startswith("TGC"):
-						if cdr3.endswith("TTT") or cdr3.endswith("TTC"):
-							if count > max_count:
-								top_cdr3s = {cdr3}
-								max_count = count
-							elif count == max_count:
-								top_cdr3s.add(cdr3)
+					#if cdr3.endswith("TTT") or cdr3.endswith("TTC"):
+						if count > max_count:
+							top_cdr3s = {cdr3}
+							max_count = count
+						elif count == max_count:
+							top_cdr3s.add(cdr3)
 			if top_cdr3s is not None:
 				# TODO: LEVENSHTEIN DISTANCE, any remaining ties keep as a set, resolve on barcode level
 				if not self.is_complete_cdr3:
