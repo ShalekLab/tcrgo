@@ -17,13 +17,16 @@ log = Log(name=__name__)
 
 def main(args):
 	log.init(args.verbosity)
-	worker_range = [int(i) for i in args.workers.strip(':').split(':')]
-	if worker_range[0] < 1:
-		log.error("Please enter positive value for the start of the range.")
-	if len(worker_range) > 1:
-		worker_range = range(worker_range[0], worker_range[-1]+1)
+	if args.workers == "ALL":
+		worker_range = io.list_cdr3_files(args.input_directory)
 	else:
-		worker_range = range(1, worker_range[-1]+1)
+		worker_range = [int(i) for i in args.workers.strip(':').split(':')]
+		if worker_range[0] < 1:
+			log.error("Please enter positive value for the start of the range.")
+		if len(worker_range) > 1:
+			worker_range = range(worker_range[0], worker_range[-1]+1)
+		else:
+			worker_range = range(1, worker_range[-1]+1)
 
 	aggregated_cdr3_info = io.read_cdr3_info(worker_range, args.input_path, args.string_index)
 	io.write_aggregated_cdr3_info(aggregated_cdr3_info, args.output_path)

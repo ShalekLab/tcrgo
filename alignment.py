@@ -32,16 +32,7 @@ def main(args):
 	log.info("Checking sequence data and FASTA arguments.") 
 	if not os.path.isfile(args.fasta):
 		log.error("Please enter a valid path to your FASTA file!")
-	'''
-	if len(args.data) > 2:
-		log.error("For input sequence data, please enter either an unmapped BAM "
-			f"or paired end FASTQs; FASTQ_R1, FASTQ_R2. Received {len(args.data)}.")
-	elif len(args.data) == 2:
-		log.info(f"Converting {args.data[0]} and {args.data[1]} to BAM")
-		bam_raw = ds.fastq_to_bam(args.picard, args.data[0], args.data[1], bam_unmapped)
-	else:
-		bam_raw = args.data[0]
-	'''
+
 	if not os.path.exists(args.output_path):
 		os.makedirs(args.output_path)
 	if args.basename is None:

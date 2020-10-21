@@ -1,4 +1,5 @@
 import os
+import glob
 import os.path as osp
 import subprocess as sp
 import re
@@ -197,6 +198,10 @@ def read_id_queries(output_path: Path, worker: int) -> List[str]:
 	log.info(f"Reading {queries_filename}.")
 	return open(queries_filename, 'r').read().splitlines()
 
+def read_query_list(query_list: str) -> List[str]:
+	log.info(f"Reading {query_list}.")
+	return open(query_list, 'r').read().splitlines()
+
 def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 	cdr3_positions = {}
 	with open(cdr3_file, 'r') as cdr3_file:
@@ -205,7 +210,15 @@ def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 			cdr3_positions[line[0]] = int(line[1])
 	return cdr3_positions
 
-def read_cdr3_info(workers: range, input_path: Path, string_index: bool=False) -> DataFrame:
+def list_cdr3_files(input_directory: str) -> List[int]:
+	cdr3_infos = glob.glob(os.path.join(input_directory, "cdr3_info*.tsv"))
+	worker_ids = list()
+	for cdr3_info in cdr3_infos:
+		w = cdr3_info.replace("cdr3_info", '').replace(".tsv", '')
+		worker_ids.append(int(w))
+	return worker_ids
+
+def read_cdr3_info(workers, input_path: Path, string_index: bool=False) -> DataFrame:
 	for w in workers:
 		cdr3_info_filename = osp.join(input_path, f"cdr3_info{w}.tsv")
 		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0, index_col=["BC", "UMI"])

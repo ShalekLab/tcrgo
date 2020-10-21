@@ -1,0 +1,12 @@
+out*
+old
+dropseq*
+.git*
+.DS_Store
+*.pdf
+*.tsv
+*.txt
+data
+*.wdl
+junk
+__pycache__

@@ -27,7 +27,10 @@ def main(args):
 	bam = io.sort_and_index(args.bam, args.output_path)
 	
 	log.info("Reading filtered queries containing V and J subregions")
-	id_queries = io.read_id_queries(args.input_path, args.worker)
+	if args.query_list is not None:
+		id_queries = io.read_query_list(args.query_list)
+	else:
+		id_queries = io.read_id_queries(args.input_path, args.worker)
 
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
@@ -107,6 +110,12 @@ if __name__ == "__main__":
 			"and the start V or end J base position"
 	)
 	# OPTIONAL ARGUMENTS
+	parser.add_argument(
+		'-q', "--query-list",
+		type=str,
+		required=False,
+		help="The path to the query list file to read."
+	)
 	parser.add_argument(
 		'-w', "--worker",
 		type=int,
