@@ -79,11 +79,11 @@ task preprocessing_and_alignment {
 			--dropseq /software/dropseq/jar/dropseq.jar \
 			--picard /software/dropseq/3rdparty/picard.jar \
 			--basename ~{sample_name} \
-			--output-directory /scripts/out/ \
+			--output-directory /cromwell_root/out/ \
 			~{bam_raw}
 	>>>
 	output {
-		File bam_repaired = "/scripts/out/~{sample_name}_repaired.bam"
+		File bam_repaired = "/cromwell_root/out/~{sample_name}_repaired.bam"
 	}
 	runtime {
 		docker: docker
@@ -118,12 +118,12 @@ task filter_queries {
 			--minimum_reads ~{minimum_reads} \
 			--maximum_reads ~{maximum_reads} \
 			--seed ~{seed} \
-			--output-directory /scripts/out/ \
+			--output-directory /cromwell_root/out/ \
 			--workers ~{workers} \
 			~{bam}
 	>>>
 	output {
-		Array[File] query_list = glob("/scripts/out/queries*.txt")
+		Array[File] query_list = glob("/cromwell_root/out/queries*.txt")
 	}
 	runtime {
 		docker: docker
@@ -160,12 +160,12 @@ task reconstruct_tcrs {
 			--cdr3-positions-file ~{cdr3_positions} \
 			--minimum-frequency ~{minimum_frequency} \
 			--minimum-cdr3s ~{minimum_cdr3s} \
-			--output-directory /scripts/out/ \
+			--output-directory /cromwell_root/out/ \
 			--query-list ~{query_list} \
 			~{bam}
 	>>>
 	output {
-		File cdr3_info = glob("/scripts/out/cdr3_info*.tsv")[0]
+		File cdr3_info = glob("/cromwell_root/out/cdr3_info*.tsv")[0]
 	}
 	runtime {
 		docker: docker
@@ -194,7 +194,7 @@ task summary {
 	}
 	command <<<
 		set -e
-		output_directory="/scripts/out/"
+		output_directory="/cromwell_root/out/"
 		mkdir -p $output_directory
 		cd $output_directory
 		python <<CODE
@@ -212,7 +212,7 @@ task summary {
 		mv ${output_directory}aggregated_cdr3_info.tsv ${output_directory}~{sample_name}_cdr3_info.tsv
 	>>>
 	output {
-		File aggregated_cdr3_info = "/scripts/out/~{sample_name}_cdr3_info.tsv"
+		File aggregated_cdr3_info = "/cromwell_root/out/~{sample_name}_cdr3_info.tsv"
 	}
 	runtime {
 		docker: docker
