@@ -79,11 +79,11 @@ task preprocessing_and_alignment {
 			--dropseq /software/dropseq/jar/dropseq.jar \
 			--picard /software/dropseq/3rdparty/picard.jar \
 			--basename ~{sample_name} \
-			--output-directory /tcrgo/out/alignment/ \
+			--output-directory /scripts/out/ \
 			~{bam_raw}
 	>>>
 	output {
-		File bam_repaired = "/tcrgo/out/alignment/~{sample_name}_repaired.bam"
+		File bam_repaired = "/scripts/out/~{sample_name}_repaired.bam"
 	}
 	runtime {
 		docker: docker
@@ -114,17 +114,16 @@ task filter_queries {
 	}
 	command <<<
 		set -e
-		mkdir -p /tcrgo/out/queries/
 		python -m /scripts/filter_queries \
 			--minimum_reads ~{minimum_reads} \
 			--maximum_reads ~{maximum_reads} \
 			--seed ~{seed} \
-			--output-directory /tcrgo/out/queries/ \
+			--output-directory /scripts/out/ \
 			--workers ~{workers} \
 			~{bam}
 	>>>
 	output {
-		Array[File] query_list = glob("/tcrgo/out/queries/queries*.txt")
+		Array[File] query_list = glob("/scripts/out/queries*.txt")
 	}
 	runtime {
 		docker: docker
@@ -156,18 +155,17 @@ task reconstruct_tcrs {
 	}
 	command <<<
 		set -e
-		mkdir -p /tcrgo/out/cdr3/
 		python -m /scripts/reconstruct_tcrs \
 			--fasta ~{fasta} \
 			--cdr3-positions-file ~{cdr3_positions} \
 			--minimum-frequency ~{minimum_frequency} \
 			--minimum-cdr3s ~{minimum_cdr3s} \
-			--output-directory /tcrgo/out/cdr3/ \
+			--output-directory /scripts/out/ \
 			--query-list ~{query_list} \
 			~{bam}
 	>>>
 	output {
-		File cdr3_info = glob("/tcrgo/out/cdr3/cdr3_info*.tsv")[0]
+		File cdr3_info = glob("/scripts/out/cdr3_info*.tsv")[0]
 	}
 	runtime {
 		docker: docker
@@ -196,7 +194,7 @@ task summary {
 	}
 	command <<<
 		set -e
-		output_directory="/tcrgo/out/cdr3/"
+		output_directory="/scripts/out/"
 		mkdir -p $output_directory
 		cd $output_directory
 		python <<CODE
@@ -214,7 +212,7 @@ task summary {
 		mv ${output_directory}aggregated_cdr3_info.tsv ${output_directory}~{sample_name}_cdr3_info.tsv
 	>>>
 	output {
-		File aggregated_cdr3_info = "/tcrgo/out/cdr3/~{sample_name}_cdr3_info.tsv"
+		File aggregated_cdr3_info = "/scripts/out/~{sample_name}_cdr3_info.tsv"
 	}
 	runtime {
 		docker: docker
