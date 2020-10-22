@@ -74,7 +74,7 @@ task preprocessing_and_alignment {
 	command <<<
 		set -e
 		cd /scripts/
-		python -m /tcrgo/alignment \
+		python -m /scripts/alignment \
 			--fasta ~{fasta} \
 			--dropseq /software/dropseq/jar/dropseq.jar \
 			--picard /software/dropseq/3rdparty/picard.jar \
@@ -114,6 +114,7 @@ task filter_queries {
 	}
 	command <<<
 		set -e
+		mkdir -p /tcrgo/out/queries/
 		python -m /scripts/filter_queries \
 			--minimum_reads ~{minimum_reads} \
 			--maximum_reads ~{maximum_reads} \
@@ -155,6 +156,7 @@ task reconstruct_tcrs {
 	}
 	command <<<
 		set -e
+		mkdir -p /tcrgo/out/cdr3/
 		python -m /scripts/reconstruct_tcrs \
 			--fasta ~{fasta} \
 			--cdr3-positions-file ~{cdr3_positions} \
