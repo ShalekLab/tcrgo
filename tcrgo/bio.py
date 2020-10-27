@@ -1,8 +1,8 @@
-def levenshtein_distance(sequence1, sequence2):
+def levenshtein_distance(sequence1: str, sequence2: str) -> int:
 	edit_distances = []
 	# Create matrix
 	for i in range(len(sequence1)+1):
-		edit_distances.append([0] * len(sequence2)+1)
+		edit_distances.append([0] * (len(sequence2)+1))
 	# Initialize ED(a, empty string prefix of b) = i
 	for i in range(len(sequence1)+1):
 		edit_distances[i][0] = i
@@ -21,3 +21,12 @@ def levenshtein_distance(sequence1, sequence2):
 				distance_diagonal = edit_distances[i-1][j-1] + 1
 			edit_distances[i][j] = min(distance_horizontal, distance_vertical, distance_diagonal)
 	return edit_distances[-1][-1] # Bottom right corner is the overall edit distance
+
+def hamming_distance(sequence1: str, sequence2: str) -> int:
+	if len(sequence1) != len(sequence2):
+		raise Exception("Sequences are not of the same length.")
+	count_mismatches = 0
+	for i in range(len(sequence1)):
+		if sequence1[i] != sequence2[i]:
+			count_mismatches += 1
+	return count_mismatches

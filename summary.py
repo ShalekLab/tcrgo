@@ -18,7 +18,7 @@ log = Log(name=__name__)
 def main(args):
 	log.init(args.verbosity)
 	if args.workers == "ALL":
-		worker_range = io.list_cdr3_files(args.input_directory)
+		worker_range = io.list_cdr3_files(args.input_path)
 	else:
 		worker_range = [int(i) for i in args.workers.strip(':').split(':')]
 		if worker_range[0] < 1:
@@ -29,7 +29,9 @@ def main(args):
 			worker_range = range(1, worker_range[-1]+1)
 
 	aggregated_cdr3_info = io.read_cdr3_info(worker_range, args.input_path, args.string_index)
-	io.write_aggregated_cdr3_info(aggregated_cdr3_info, args.output_path)
+	io.write_dataframe(aggregated_cdr3_info, args.output_path, "aggregated_cdr3_info.tsv")
+	aggregated_tiebreaks_alignments = io.read_tiebreaks_alignments(worker_range, args.input_path)
+	io.write_dataframe(aggregated_tiebreaks_alignments, args.output_path, "aggregated_tiebreaks_alignments.tsv")
 
 if __name__ == "__main__":
 

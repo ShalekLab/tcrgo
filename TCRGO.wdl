@@ -3,6 +3,7 @@ version 1.0
 workflow TCRGO {
 	input {
 		File sample_sheet
+		Boolean run_alignment = true
 		File fasta
 		File cdr3_positions
 		Int workers = 32
@@ -13,31 +14,33 @@ workflow TCRGO {
 	}
 	scatter (sample in read_objects(sample_sheet)) {
 		String sample_name = sample.Sample
-		String bam_raw = sample.BAM
-		call preprocessing_and_alignment as alignment {
-			input:
-				bam_raw = bam_raw,
-				fasta = fasta,
-				sample_name = sample_name,
-				docker = docker,
-				zones = zones,
-				preemptible = preemptible
+		String bam = sample.BAM
+		if (run_alignment) {
+			call preprocessing_and_alignment as alignment {
+				input:
+					bam_raw = bam,
+					fasta = fasta,
+					sample_name = sample_name,
+					docker = docker,
+					zones = zones,
+					preemptible = preemptible
+			}
 		}
 		call filter_queries {
 			input:
-				bam = alignment.bam_repaired,
+				bam = if run_alignment then select_first([alignment.bam_repairedsorted]) else bam,
 				workers = workers,
 				docker = docker,
 				zones = zones,
 				preemptible = preemptible
 		}
-		scatter (file in filter_queries.query_list) {
+		scatter (query_list in filter_queries.query_list) {
 			call reconstruct_tcrs {
 				input:
-					bam = alignment.bam_repaired,
+					bam = filter_queries.bam_sorted,
 					fasta = fasta,
 					cdr3_positions = cdr3_positions,
-					query_list = file,
+					query_list = query_list,
 					docker = docker,
 					zones = zones,
 					preemptible = preemptible
@@ -46,6 +49,7 @@ workflow TCRGO {
 		call summary {
 			input:
 				cdr3_infos = reconstruct_tcrs.cdr3_info,
+				tiebreaks_alignments = select_all(reconstruct_tcrs.tiebreaks_alignments),
 				sample_name = sample_name,
 				docker = docker,
 				zones = zones,
@@ -54,6 +58,7 @@ workflow TCRGO {
 	}
 	output {
 		Array[File] aggregated_cdr3_infos = summary.aggregated_cdr3_info
+		Array[File] aggregated_tiebreaks_alignments = select_all(summary.aggregated_tiebreaks_alignments)
 	}
 }
 
@@ -69,21 +74,21 @@ task preprocessing_and_alignment {
 		Int number_cpu_threads = 4
 		Int task_memory_GB = 32
 		String disks = "local-disk 512 HDD"
-		Int boot_disk_size_GB = 10		
+		Int boot_disk_size_GB = 10
 	}
 	command <<<
 		set -e
 		cd /scripts/
-		python -m /scripts/alignment \
+		python -m alignment \
 			--fasta ~{fasta} \
 			--dropseq /software/dropseq/jar/dropseq.jar \
-			--picard /software/dropseq/3rdparty/picard.jar \
+			--picard /software/dropseq/3rdParty/picard/picard.jar \
 			--basename ~{sample_name} \
-			--output-directory /cromwell_root/out/ \
+			--output-path /cromwell_root/out/ \
 			~{bam_raw}
 	>>>
 	output {
-		File bam_repaired = "/cromwell_root/out/~{sample_name}_repaired.bam"
+		File bam_repairedsorted = "/cromwell_root/out/~{sample_name}_repaired_sorted.bam"
 	}
 	runtime {
 		docker: docker
@@ -110,20 +115,22 @@ task filter_queries {
 		Int number_cpu_threads = 4
 		Int task_memory_GB = 16
 		String disks = "local-disk 128 HDD"
-		Int boot_disk_size_GB = 10		
+		Int boot_disk_size_GB = 10
 	}
 	command <<<
 		set -e
-		python -m /scripts/filter_queries \
+		cd /scripts/
+		python -m filter_queries \
 			--minimum_reads ~{minimum_reads} \
 			--maximum_reads ~{maximum_reads} \
 			--seed ~{seed} \
-			--output-directory /cromwell_root/out/ \
+			--output-path /cromwell_root/out/ \
 			--workers ~{workers} \
 			~{bam}
 	>>>
 	output {
-		Array[File] query_list = glob("/cromwell_root/out/queries*.txt")
+		Array[File] query_list = glob("/cromwell_root/out/queries[0-9]*.txt")
+		File bam_sorted = glob("/cromwell_root/out/*_sorted.bam")[0]
 	}
 	runtime {
 		docker: docker
@@ -142,7 +149,7 @@ task reconstruct_tcrs {
 		File query_list
 		File cdr3_positions
 		File fasta
-		Int minimum_frequency = 0.3
+		Float minimum_frequency = 0.3
 		Int minimum_cdr3s = 5
 
 		Int preemptible
@@ -151,21 +158,23 @@ task reconstruct_tcrs {
 		Int number_cpu_threads = 4
 		Int task_memory_GB = 16
 		String disks = "local-disk 128 HDD"
-		Int boot_disk_size_GB = 10		
+		Int boot_disk_size_GB = 10
 	}
 	command <<<
 		set -e
-		python -m /scripts/reconstruct_tcrs \
+		cd /scripts/
+		python -m reconstruct_tcrs \
 			--fasta ~{fasta} \
 			--cdr3-positions-file ~{cdr3_positions} \
 			--minimum-frequency ~{minimum_frequency} \
 			--minimum-cdr3s ~{minimum_cdr3s} \
-			--output-directory /cromwell_root/out/ \
+			--output-path /cromwell_root/out/ \
 			--query-list ~{query_list} \
 			~{bam}
 	>>>
 	output {
 		File cdr3_info = glob("/cromwell_root/out/cdr3_info*.tsv")[0]
+		File? tiebreaks_alignments = glob("/cromwell_root/out/tiebreaks_alignments*.tsv")[0]
 	}
 	runtime {
 		docker: docker
@@ -181,6 +190,7 @@ task reconstruct_tcrs {
 task summary {
 	input {
 		Array[File] cdr3_infos
+		Array[File] tiebreaks_alignments
 		String sample_name
 		Boolean string_index = false
 
@@ -190,29 +200,40 @@ task summary {
 		Int number_cpu_threads = 4
 		Int task_memory_GB = 16
 		String disks = "local-disk 128 HDD"
-		Int boot_disk_size_GB = 10		
+		Int boot_disk_size_GB = 10
 	}
 	command <<<
 		set -e
 		output_directory="/cromwell_root/out/"
 		mkdir -p $output_directory
 		cd $output_directory
+		
+		# Move the files to the PWD
 		python <<CODE
-			import os
-			# Move the files to the PWD
-			cdr3_infos = "~{sep=',' cdr3_infos}".split(',')
-			for cdr3_info in cdr3_infos:
-				os.rename(cdr3_info, os.path.basename(cdr3_info))
+		import os
+		cdr3_infos = "~{sep=',' cdr3_infos}".split(',')
+		tiebreaks_alignments = "~{sep=',' tiebreaks_alignments}".split(',')
+		for file in cdr3_infos:
+			os.rename(file, os.path.basename(file))
+		for file in tiebreaks_alignments:
+			os.rename(file, os.path.basename(file))
 		CODE
-		python -m /scripts/summary \
-			~{true="--string-index" false='' string_index}
+		
+		# Run the summary script
+		cd /scripts/
+		python -m summary \
+			~{true="--string-index" false='' string_index} \
 			--input-path $output_directory \
-			--output-directory $output_directory \
+			--output-path $output_directory \
 			ALL
+		
+		# Rename the summary files to contain sample_name
 		mv ${output_directory}aggregated_cdr3_info.tsv ${output_directory}~{sample_name}_cdr3_info.tsv
+		mv ${output_directory}aggregated_tiebreaks_alignments.tsv ${output_directory}~{sample_name}_tiebreaks_alignments.tsv
 	>>>
 	output {
 		File aggregated_cdr3_info = "/cromwell_root/out/~{sample_name}_cdr3_info.tsv"
+		File? aggregated_tiebreaks_alignments = glob("/cromwell_root/out/~{sample_name}_tiebreaks_alignments.tsv")[0]
 	}
 	runtime {
 		docker: docker

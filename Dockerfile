@@ -1,6 +1,5 @@
 FROM debian:latest
 # ORIGINAL MAINTAINER Conda Development Team <conda@continuum.io>
-COPY transform_read_data.sh /scripts/
 
 RUN apt-get -qq update && apt-get -qq -y install curl unzip bzip2 default-jre ca-certificates libgomp1 build-essential zlib1g-dev \
 	&& curl -L -s -o "/Drop-seq_tools-2.4.0.zip" "https://github.com/broadinstitute/Drop-seq/releases/download/v2.4.0/Drop-seq_tools-2.4.0.zip" \
@@ -20,8 +19,8 @@ RUN apt-get -qq update && apt-get -qq -y install curl unzip bzip2 default-jre ca
 	&& rm -rf /var/lib/apt/lists/* /var/log/dpkg.log \
 	&& conda clean --all --yes \
 	&& conda config --add channels conda-forge --add channels bioconda \
-	&& conda install -y samtools=1.3.1 bowtie2=2.4.1 pysam=0.16.0.1 pandas=1.1.2 \
-	&& chmod +x /scripts/transform_read_data.sh
+	&& conda install -y samtools=1.3.1 bowtie2=2.4.1 pysam=0.16.0.1 pandas=1.1.2
 
+COPY transform_read_data.sh /scripts/
 COPY *.py /scripts/
 COPY tcrgo /scripts/tcrgo

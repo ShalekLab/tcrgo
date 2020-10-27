@@ -7,6 +7,7 @@ import os
 import os.path as osp
 
 from pathlib import Path
+from collections import Counter
 from typing import List, Dict, Iterator, Set, Tuple, DefaultDict
 IndexedReads = pysam.libcalignmentfile.IndexedReads
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
@@ -124,7 +125,18 @@ class BAMDict(object):
 			count += 1
 			if count % report_interval == 0:
 				log.info(f"Processed {count} reads of {len(id_queries)}")
-	
+
+	def write_tiebreaks_alignments(self, w, output_path):
+		ties_aggregated = Counter()
+		for read in self.get_reads():
+			ties_aggregated += read.ties
+		filename = osp.join(output_path, f"tiebreaks_alignments{w}.tsv")
+		with open(filename, 'w') as tiebreaks:
+			tiebreaks.write("Winner\tLoser\tMethod\tCount\n")
+			for case, count in ties_aggregated.items():
+				winner, loser, method = case.split('|')
+				tiebreaks.write(f"{winner}\t{loser}\t{method}\t{count}\n")		
+
 	# TODO: Move to Read file, adjust, and call for each read from reconstruct_tcrs instead
 	@log.time
 	def reconstruct_cdr3s(self, fasta: FASTA, cdr3_positions: Dict[str, int]):
@@ -160,8 +172,8 @@ class BAMDict(object):
 				for umi_seq, umi in barcode.items():
 					cdr3_info.write(
 						f"{b}\t{u}\t{barcode_seq}\t{umi_seq}\t{len(umi)}\t"
-						f"{umi.top_VJ}\t{umi.count_top_VJ}\t{umi.frequency_top_VJ}\t"
-						f"{umi.top_cdr3}\t{umi.count_top_cdr3}\t{umi.frequency_top_cdr3}\t"
+						f"{umi.top_VJ}\t{umi.count_top_VJ}\t{umi.frequency_top_VJ:.3f}\t"
+						f"{umi.top_cdr3}\t{umi.count_top_cdr3}\t{umi.frequency_top_cdr3:.3f}\t"
 						f"{umi.counts_region['TRAV']}\t{umi.counts_region['TRAJ']}\t{umi.counts_region['TRAC']}\t"
 						f"{umi.counts_region['TRBV']}\t{umi.counts_region['TRBJ']}\t{umi.counts_region['TRBC']}\t"
 						f"{umi.counts_region['UNKN']}\n"

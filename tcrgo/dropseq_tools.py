@@ -321,7 +321,10 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 	log.sep()
 	execute(command)
 	log.sep()
-	return bam_repaired
+	bam_repairedsorted = bam_repaired.replace(".bam", "_sorted.bam") 
+	print(f"Sorting bam to produce {bam_repairedsorted}...")
+	pysam.sort("-o", bam_repairedsorted, bam_repaired)
+	return bam_repairedsorted
 
 # TODO: Python not integrated into script.
 def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):

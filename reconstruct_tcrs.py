@@ -29,6 +29,7 @@ def main(args):
 	log.info("Reading filtered queries containing V and J subregions")
 	if args.query_list is not None:
 		id_queries = io.read_query_list(args.query_list)
+		args.worker = io.get_worker_id(args.query_list)
 	else:
 		id_queries = io.read_id_queries(args.input_path, args.worker)
 
@@ -64,6 +65,8 @@ def main(args):
 	
 	log.info("Finished reconstructing CDR3 sequences for all reads")
 	bamdict.write_cdr3_info(args.worker, args.output_path)
+	log.info("Writing reference info for alignment tiebreaks.")
+	bamdict.write_tiebreaks_alignments(args.worker, args.output_path)
 	bamdict.close()
 	log.success("Done")
 

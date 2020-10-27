@@ -202,6 +202,9 @@ def read_query_list(query_list: str) -> List[str]:
 	log.info(f"Reading {query_list}.")
 	return open(query_list, 'r').read().splitlines()
 
+def get_worker_id(query_list: str) -> int:
+	return int(osp.basename(query_list).replace("queries", '').replace(".txt", ''))
+
 def read_cdr3_file(cdr3_file: str) -> Dict[str, int]:
 	cdr3_positions = {}
 	with open(cdr3_file, 'r') as cdr3_file:
@@ -214,9 +217,9 @@ def list_cdr3_files(input_directory: str) -> List[int]:
 	cdr3_infos = glob.glob(os.path.join(input_directory, "cdr3_info*.tsv"))
 	worker_ids = list()
 	for cdr3_info in cdr3_infos:
-		w = cdr3_info.replace("cdr3_info", '').replace(".tsv", '')
+		w = os.path.basename(cdr3_info).replace("cdr3_info", '').replace(".tsv", '')
 		worker_ids.append(int(w))
-	return worker_ids
+	return sorted(worker_ids)
 
 def read_cdr3_info(workers, input_path: Path, string_index: bool=False) -> DataFrame:
 	for w in workers:
@@ -245,16 +248,30 @@ def read_cdr3_info(workers, input_path: Path, string_index: bool=False) -> DataF
 		df.insert(0, "BC_index", bc_index)	
 	return df
 
-def write_aggregated_cdr3_info(df: DataFrame, output_path: Path):
-	log.info("Writing aggregated dataframe to file.")
+def read_tiebreaks_alignments(workers, input_path: Path) -> DataFrame:
+	for w in workers:
+		tiebreaks_alignments = osp.join(input_path, f"tiebreaks_alignments{w}.tsv")
+		w_tiebreaks_alignments = pd.read_csv(tiebreaks_alignments, sep='\t', header=0)
+		if w == 1:
+			df = w_tiebreaks_alignments
+		else:
+			df = df.merge(w_tiebreaks_alignments, how="outer", on=["Winner", "Loser", "Method"])
+			df = df.fillna(0)
+			df["Count"] = (df["Count_x"] + df["Count_y"]).astype(int)
+			df = df.drop(["Count_x", "Count_y"], axis=1)
+	df = df.sort_values(["Winner", "Loser", "Method"])
+	return df
+
+def write_dataframe(df: DataFrame, output_path: Path, filename: str):
+	filename_path = osp.join(output_path, filename)
+	log.info(f"Writing aggregated dataframe to file {filename_path}.")
 	if not osp.exists(output_path):
 		os.makedirs(output_path)
-	aggregated_cdr3_info_filename = osp.join(output_path, "aggregated_cdr3_info.tsv")
-	if osp.isfile(aggregated_cdr3_info_filename):
-		log.warn(f"Deleting already existing {aggregated_cdr3_info_filename}.")
-		os.remove(aggregated_cdr3_info_filename)
-	df.to_csv(aggregated_cdr3_info_filename, sep='\t', header=True, index=False)
-	log.info(f"Wrote {aggregated_cdr3_info_filename}")
+	if osp.isfile(filename_path):
+		log.warn(f"Deleting already existing {filename_path}.")
+		os.remove(filename_path)
+	df.to_csv(filename_path, sep='\t', header=True, index=False)
+	log.info(f"Wrote {filename_path}")
 
 ###################################################################################
 #	Deprecated

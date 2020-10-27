@@ -100,7 +100,7 @@ class Read(object):
 		else: # Alphabetical order of reference name
 			winner, loser = sorted((top_alignment, alignment), key=lambda a: a.reference_name)
 			method = "Alphabetical"
-		self.ties[f"{winner}>{loser}:{method}"] += 1
+		self.ties[f"{winner.reference_name}|{loser.reference_name}|{method}"] += 1
 		return winner
 
 	def compare_scores(self, top_alignment: AlignedSegment, top_score: int, alignment: AlignedSegment) -> Tuple[AlignedSegment, int]:
