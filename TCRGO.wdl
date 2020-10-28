@@ -26,7 +26,7 @@ workflow TCRGO {
 	}
 	call filter_queries {
 		input:
-			bam = if run_alignment then select_first([alignment.bam_repairedsorted]) else bam,
+			bam = select_first([alignment.bam_repairedsorted, data[0]]),
 			workers = workers,
 			docker = docker,
 			zones = zones,
@@ -47,7 +47,7 @@ workflow TCRGO {
 	call summary {
 		input:
 			cdr3_infos = reconstruct_tcrs.cdr3_info,
-			tiebreaks_alignments = select_all(reconstruct_tcrs.tiebreaks_alignments),
+			tiebreaks_alignments = reconstruct_tcrs.tiebreaks_alignments,
 			sample_name = sample_name,
 			docker = docker,
 			zones = zones,
@@ -55,7 +55,7 @@ workflow TCRGO {
 	}
 	output {
 		File aggregated_cdr3_infos = summary.aggregated_cdr3_info
-		File aggregated_tiebreaks_alignments = select_all(summary.aggregated_tiebreaks_alignments)
+		File aggregated_tiebreaks_alignments = summary.aggregated_tiebreaks_alignments
 	}
 }
 
@@ -171,7 +171,7 @@ task reconstruct_tcrs {
 	>>>
 	output {
 		File cdr3_info = glob("/cromwell_root/out/cdr3_info*.tsv")[0]
-		File? tiebreaks_alignments = glob("/cromwell_root/out/tiebreaks_alignments*.tsv")[0]
+		File tiebreaks_alignments = glob("/cromwell_root/out/tiebreaks_alignments*.tsv")[0]
 	}
 	runtime {
 		docker: docker
@@ -230,7 +230,7 @@ task summary {
 	>>>
 	output {
 		File aggregated_cdr3_info = "/cromwell_root/out/~{sample_name}_cdr3_info.tsv"
-		File? aggregated_tiebreaks_alignments = glob("/cromwell_root/out/~{sample_name}_tiebreaks_alignments.tsv")[0]
+		File aggregated_tiebreaks_alignments = "/cromwell_root/out/~{sample_name}_tiebreaks_alignments.tsv"
 	}
 	runtime {
 		docker: docker
