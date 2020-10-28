@@ -2,7 +2,8 @@ version 1.0
 
 workflow TCRGO {
 	input {
-		File sample_sheet
+		String sample_name
+		Array[File] data
 		Boolean run_alignment = true
 		File fasta
 		File cdr3_positions
@@ -12,59 +13,55 @@ workflow TCRGO {
 		String zones = "us-central1-a us-central1-b us-central1-c us-central1-f us-east1-b us-east1-c us-east1-d us-west1-a us-west1-b us-west1-c"
 		Int preemptible = 2
 	}
-	scatter (sample in read_objects(sample_sheet)) {
-		String sample_name = sample.Sample
-		String bam = sample.BAM
-		if (run_alignment) {
-			call preprocessing_and_alignment as alignment {
-				input:
-					bam_raw = bam,
-					fasta = fasta,
-					sample_name = sample_name,
-					docker = docker,
-					zones = zones,
-					preemptible = preemptible
-			}
-		}
-		call filter_queries {
+	if (run_alignment) {
+		call preprocessing_and_alignment as alignment {
 			input:
-				bam = if run_alignment then select_first([alignment.bam_repairedsorted]) else bam,
-				workers = workers,
-				docker = docker,
-				zones = zones,
-				preemptible = preemptible
-		}
-		scatter (query_list in filter_queries.query_list) {
-			call reconstruct_tcrs {
-				input:
-					bam = filter_queries.bam_sorted,
-					fasta = fasta,
-					cdr3_positions = cdr3_positions,
-					query_list = query_list,
-					docker = docker,
-					zones = zones,
-					preemptible = preemptible
-			}
-		}
-		call summary {
-			input:
-				cdr3_infos = reconstruct_tcrs.cdr3_info,
-				tiebreaks_alignments = select_all(reconstruct_tcrs.tiebreaks_alignments),
+				data = data,
+				fasta = fasta,
 				sample_name = sample_name,
 				docker = docker,
 				zones = zones,
 				preemptible = preemptible
 		}
 	}
+	call filter_queries {
+		input:
+			bam = if run_alignment then select_first([alignment.bam_repairedsorted]) else bam,
+			workers = workers,
+			docker = docker,
+			zones = zones,
+			preemptible = preemptible
+	}
+	scatter (query_list in filter_queries.query_list) {
+		call reconstruct_tcrs {
+			input:
+				bam = filter_queries.bam_sorted,
+				fasta = fasta,
+				cdr3_positions = cdr3_positions,
+				query_list = query_list,
+				docker = docker,
+				zones = zones,
+				preemptible = preemptible
+		}
+	}
+	call summary {
+		input:
+			cdr3_infos = reconstruct_tcrs.cdr3_info,
+			tiebreaks_alignments = select_all(reconstruct_tcrs.tiebreaks_alignments),
+			sample_name = sample_name,
+			docker = docker,
+			zones = zones,
+			preemptible = preemptible
+	}
 	output {
-		Array[File] aggregated_cdr3_infos = summary.aggregated_cdr3_info
-		Array[File] aggregated_tiebreaks_alignments = select_all(summary.aggregated_tiebreaks_alignments)
+		File aggregated_cdr3_infos = summary.aggregated_cdr3_info
+		File aggregated_tiebreaks_alignments = select_all(summary.aggregated_tiebreaks_alignments)
 	}
 }
 
 task preprocessing_and_alignment {
 	input {
-		File bam_raw
+		Array[File] data
 		File fasta
 		String sample_name
 
@@ -85,7 +82,7 @@ task preprocessing_and_alignment {
 			--picard /software/dropseq/3rdParty/picard/picard.jar \
 			--basename ~{sample_name} \
 			--output-path /cromwell_root/out/ \
-			~{bam_raw}
+			~{sep=' ' data}
 	>>>
 	output {
 		File bam_repairedsorted = "/cromwell_root/out/~{sample_name}_repaired_sorted.bam"
@@ -130,7 +127,7 @@ task filter_queries {
 	>>>
 	output {
 		Array[File] query_list = glob("/cromwell_root/out/queries[0-9]*.txt")
-		File bam_sorted = glob("/cromwell_root/out/*_sorted.bam")[0]
+		File bam_sorted = bam
 	}
 	runtime {
 		docker: docker

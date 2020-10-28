@@ -1,5 +1,6 @@
 """Alignment and preprocessing via Drop-Seq Tools 2.4.0 and Bowtie2 version 2.4.1"""
 import tcrgo.dropseq_tools as ds
+import tcrgo.io as io
 import argparse
 from textwrap import dedent, indent
 from pathlib import Path
@@ -29,17 +30,15 @@ def main(args):
 	log.info("Verifying that Drop-Seq Tools, Picard, and Bowtie2 are all callable...")
 	ds.test_tools(args.dropseq, args.picard)
 
-	log.info("Checking sequence data and FASTA arguments.") 
-	if not os.path.isfile(args.fasta):
-		log.error("Please enter a valid path to your FASTA file!")
-
 	if not os.path.exists(args.output_path):
 		os.makedirs(args.output_path)
 	if args.basename is None:
-		args.basename = os.path.basename(args.bam.split('.')[0])
-	sample_name = args.basename
+		args.basename = os.path.basename(args.data[0].split('.')[0])
+
 	basename = os.path.join(args.output_path, args.basename)
 	fastq_singleend = basename + ".fastq"
+	fastq_barcode = basename + "_R1.fastq"
+	fastq_biological = basename + "_TCR.fastq"
 	bam_unmapped = basename + "_unmapped.bam"
 	bam_idtagged = basename + "_idtagged.bam"
 	bam_trimmed = basename + "_trimmed.bam"
@@ -49,11 +48,27 @@ def main(args):
 	bam_exontagged = basename + "_exontagged.bam"
 	bam_repaired = basename + "_repaired.bam"
 
+	log.info("Checking sequence data and FASTA arguments.") 
+	if not os.path.isfile(args.fasta):
+		log.error("Please enter a valid path to your FASTA file!")
+	is_bam = io.is_bam(args.data)
+	is_fastq_singleend = len(args.data) < 2
+	if is_bam:
+		bam_singleend = args.data[0]
+	elif is_fastq_singleend:
+		fastq_singleend = args.data[0]
+	else:
+		fastq_barcode, fastq_biological = args.data
+
+	if is_bam and not os.path.isfile(fastq_singleend):
+		log.info("Converting raw BAM to single-end FASTQ...")
+		ds.bam_to_fastq(bam_singleend, fastq_singleend)
+	if is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological):
+		log.info("Transforming Read1-index-1 FASTQ to Read1 and Read2 FASTQs")
+		ds.transform_read_data(fastq_singleend, args.basename, fastq_barcode, fastq_biological)
 	if not os.path.isfile(bam_unmapped):
-		log.info("Transforming raw BAM from Read1-index-1 format to Read1-Read2 format...")
-		ds.bam_to_fastq(args.bam, fastq_singleend)
-		fastq_barcode, fastq_biological = ds.transform_read_data(fastq_singleend, basename)
-		ds.fastq_to_bam(args.picard, fastq_barcode, fastq_biological, bam_unmapped, sample_name)
+		log.info("Converting R1 and R2 FASTQs to a single-end BAM")
+		ds.fastq_to_bam(args.picard, fastq_barcode, fastq_biological, bam_unmapped, args.basename)
 	if not os.path.isfile(bam_idtagged):
 		log.info("Tagging BAM with cell barcode and UMI sequences...")
 		ds.tag_identifiers_bam(args.dropseq, bam_unmapped, bam_idtagged)
@@ -102,20 +117,12 @@ if __name__ == "__main__":
 	)
 	# REQUIRED ARGUMENTS
 	parser.add_argument(
-		"bam", 
-		type=str,
-		metavar="<RAW BAM>",
-		help="Path to raw BAM with Read1-Index-1 format."
-	)
-	'''
-	parser.add_argument(
 		"data", 
 		type=str,
 		nargs='+',
-		metavar="<BAM or FASTQ_R1 FASTQ_R2>",
-		help="Path to single-end BAM or the paired-end FASTQs"
+		metavar="<BAM|FASTQ or FASTQ_R1,FASTQ_Index-1>",
+		help="Path to single-end BAM/FASTQ or paths (delim. by comma) Read1-index-1 FASTQs"
 	)
-	'''
 	parser.add_argument(
 		'-d', "--dropseq", 
 		type=str,

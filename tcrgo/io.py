@@ -47,16 +47,16 @@ def sort_and_index(bam: Path, output_path: str) -> Path:
 	log.info(f"Reading {bam_sorted_path}...")
 	return pysam.AlignmentFile(bam_sorted_path, "rb")
 
-def determine_data_filetype(data: List[Path]) -> bool:
+def is_bam(data: List[str]) -> bool:
 	"""
 	Evaluate file extension and return True for ".bam"
 	or False for ".fastq.gz" or ".fastq.gz"
 	raise Exception for other cases
 	"""
 	log.info("Determining the filetype of the sequence data...")
-	if len(data) == 1 and str(data[0]).endswith(".bam"):
+	if len(data) == 1 and data[0].endswith(".bam"):
 		return True
-	elif len(data) == 2 and all(str(path).endswith((".fastq.gz", ".fastq")) for path in data):
+	elif all(path.endswith((".fastq.gz", ".fastq")) for path in data):
 		return False
 	else:
 		log.error("Please either input one '.bam' path or two '.fastq.gz'/'.fastq' paths.")

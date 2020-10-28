@@ -38,11 +38,11 @@ def bam_to_fastq(bam: str, fastq: str) -> str:
 	execute(command)
 	return fastq
 
-def transform_read_data(fastq: str, sample_name: str) -> Tuple[str, str]:
+def transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: str, fastq_biological: str) -> Tuple[str, str]:
 	execute("chmod +x transform_read_data.sh")
-	command = f"./transform_read_data.sh {fastq} {sample_name}"
+	command = f"./transform_read_data.sh {fastq_singleend} {sample_name}"
 	execute(command)
-	return f"{sample_name}_Read1.fastq", f"{sample_name}_TCRreadFinal.fastq"
+	return fastq_barcode, fastq_biological
 
 def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam_unmapped: str, sample_name: str) -> str:
 	"""Convert FASTQ R1 and R2 to unmapped BAM using Picard's FastqToSam"""
