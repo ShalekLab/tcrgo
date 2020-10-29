@@ -54,6 +54,7 @@ workflow TCRGO {
 			preemptible = preemptible
 	}
 	output {
+		File? bam_repairedsorted = alignment.bam_repairedsorted
 		File aggregated_cdr3_infos = summary.aggregated_cdr3_info
 		File aggregated_tiebreaks_alignments = summary.aggregated_tiebreaks_alignments
 	}
@@ -69,9 +70,9 @@ task preprocessing_and_alignment {
 		String zones
 		String docker
 		Int number_cpu_threads = 4
-		Int task_memory_GB = 32
-		String disks = "local-disk 512 HDD"
-		Int boot_disk_size_GB = 10
+		Int task_memory_GB = 16
+		String disks = "local-disk 256 HDD"
+		Int boot_disk_size_GB = 15
 	}
 	command <<<
 		set -e
@@ -109,8 +110,8 @@ task filter_queries {
 		Int preemptible
 		String zones
 		String docker
-		Int number_cpu_threads = 4
-		Int task_memory_GB = 16
+		Int number_cpu_threads = 1
+		Int task_memory_GB = 8
 		String disks = "local-disk 128 HDD"
 		Int boot_disk_size_GB = 10
 	}
@@ -152,7 +153,7 @@ task reconstruct_tcrs {
 		Int preemptible
 		String zones
 		String docker
-		Int number_cpu_threads = 4
+		Int number_cpu_threads = 1
 		Int task_memory_GB = 16
 		String disks = "local-disk 128 HDD"
 		Int boot_disk_size_GB = 10
@@ -194,9 +195,9 @@ task summary {
 		Int preemptible
 		String zones
 		String docker
-		Int number_cpu_threads = 4
-		Int task_memory_GB = 16
-		String disks = "local-disk 128 HDD"
+		Int number_cpu_threads = 1
+		Int task_memory_GB = 4
+		String disks = "local-disk 64 HDD"
 		Int boot_disk_size_GB = 10
 	}
 	command <<<

@@ -38,9 +38,9 @@ def bam_to_fastq(bam: str, fastq: str) -> str:
 	execute(command)
 	return fastq
 
-def transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: str, fastq_biological: str) -> Tuple[str, str]:
+def transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: str, fastq_biological: str, output_path: str) -> Tuple[str, str]:
 	execute("chmod +x transform_read_data.sh")
-	command = f"./transform_read_data.sh {fastq_singleend} {sample_name}"
+	command = f"./transform_read_data.sh {fastq_singleend} {sample_name} {output_path}"
 	execute(command)
 	return fastq_barcode, fastq_biological
 

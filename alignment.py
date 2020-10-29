@@ -65,7 +65,7 @@ def main(args):
 		ds.bam_to_fastq(bam_singleend, fastq_singleend)
 	if is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological):
 		log.info("Transforming Read1-index-1 FASTQ to Read1 and Read2 FASTQs")
-		ds.transform_read_data(fastq_singleend, args.basename, fastq_barcode, fastq_biological)
+		ds.transform_read_data(fastq_singleend, args.basename, fastq_barcode, fastq_biological, args.output_path)
 	if not os.path.isfile(bam_unmapped):
 		log.info("Converting R1 and R2 FASTQs to a single-end BAM")
 		ds.fastq_to_bam(args.picard, fastq_barcode, fastq_biological, bam_unmapped, args.basename)
