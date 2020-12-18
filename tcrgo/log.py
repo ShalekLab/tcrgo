@@ -67,11 +67,11 @@ class Log(object):
 	def verbose(self, msg, indent=1):
 		self.logger.debug(f"{'	'*indent}{msg}")
 
-	def warn(self, msg):
-		self.logger.warning(msg)
+	def warn(self, msg, indent=0):
+		self.logger.warning(f"{'	'*indent}{msg}")
 
 	# TODO: Seems like ERROR messages reference self.logger.error line...
-	#		EX: (DEV: log, line 74)
+	# Is there a way to fix this?
 	def error(self, msg):
 		self.logger.error(msg)
 		sys.exit(1)
@@ -140,4 +140,9 @@ class Log(object):
 
 	def close(self):
 		self.sep('=')
+		handlers = self.logger.handlers[:]
+		for handler in handlers:
+			handler.close()
+			self.logger.removeHandler(handler)
+		#self.logger.close()
 		del self

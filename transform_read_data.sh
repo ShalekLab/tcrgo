@@ -28,7 +28,7 @@ awk 'NR%4==0' "${sequence_data}" > "${output_path}${sample}_QSeq.txt"
 
 echo Generating ${output_path}${sample}_BCSeq.txt
 awk 'NR%4==1' "${sequence_data}" \
-	| grep -o "[ATCGN]*" \
+	| ggrep -o "[ATCGN]*" \
 	> "${output_path}${sample}_BCSeq.txt"
 
 echo Generating ${output_path}${sample}_QRead2.txt
@@ -36,7 +36,7 @@ sed 's~[ATGCN]~@~g' "${output_path}${sample}_BCSeq.txt" > "${output_path}${sampl
 
 echo Generating ${output_path}${sample}_seqHeaders.txt
 awk 'NR%4==1' "${sequence_data}" \
-	| grep -o "^.*#" \
+	| ggrep -o "^.*#" \
 	> "${output_path}${sample}_seqHeaders.txt" 
 echo Generating ${output_path}${sample}_seqHeadersRead1.txt
 sed 's~#~#/1~' "${output_path}${sample}_seqHeaders.txt" > "${output_path}${sample}_seqHeadersRead1.txt"

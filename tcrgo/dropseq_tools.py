@@ -5,6 +5,7 @@ import subprocess as sp
 import pysam
 import os
 from textwrap import dedent
+import math
 
 from pathlib import Path
 from typing import List, Tuple, Dict
@@ -13,7 +14,7 @@ from tcrgo.log import Log
 log = Log(name=__name__)
 log.formatter.datefmt = "%H:%M:%S"
 
-def execute(command: str): #-> str:
+def execute(command: str) -> str:
 	try:
 		output = sp.check_output(command.split())
 	except sp.CalledProcessError:
@@ -23,17 +24,21 @@ def execute(command: str): #-> str:
 		)
 	return output
 
-def test_tools(dropseq_jar: str, picard_jar: str):
+def test_tools(dropseq_jar: str, picard_jar: str, aligner: str):
 	"""Notify user if tools could not be called from commandline"""
-	#execute(f"java -jar {dropseq_jar} TagBamWithReadSequenceExtended --version")
-	#execute(f"java -jar {picard_jar} SortSam --version")
 	if not os.path.isfile(dropseq_jar):
 		log.error(f"Could not find {dropseq_jar}")
 	if not os.path.isfile(picard_jar):
 		log.error(f"Could not find {picard_jar}")
-	execute("bowtie2 --version")
+	execute("samtools --version")
+	if aligner == "bowtie2":
+		execute("bowtie2 --version")
+	elif aligner == "star":
+		execute("star --version")
+	elif aligner == "bwa":
+		log.error("BWA is currently unsupported.")
 
-def bam_to_fastq(bam: str, fastq: str) -> str:
+def bam2fq(bam: str, fastq: str) -> str:
 	command = f"samtools bam2fq -0 {fastq} {bam}"
 	execute(command)
 	return fastq
@@ -54,7 +59,9 @@ def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam
 			FASTQ={fastq_barcode} \
 			FASTQ2={fastq_biological} \
 			QUALITY_FORMAT=Standard \
-			SORT_ORDER=queryname
+			SORT_ORDER=queryname \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
 		""" # Might need "SAMPLE_NAME" arg?
 	log.sep()
 	execute(command)
@@ -74,17 +81,17 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 	summary_tagged_molecular = os.path.join(dirname, "summary_tagged_molecular.txt")
 	command = \
 		f"""
-		java -Dsamjdk.compression_level=1 -Xmx4000m -jar {dropseq_jar} \
+		java -Xmx4000m -jar {dropseq_jar} \
 		TagBamWithReadSequenceExtended VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_untagged} \
 			OUTPUT={bam_celltagged} \
 			BARCODE_QUALITY_TAG=CY \
 			SUMMARY={summary_tagged_cellular} \
-			BASE_RANGE="1-12" \
+			BASE_RANGE=1-12 \
 			BASE_QUALITY=10 \
 			BARCODED_READ=1 \
 			DISCARD_READ=false \
-			TAG_NAME=XC \
+			TAG_NAME=CR \
 			NUM_BASES_BELOW_QUALITY=1 \
 			USE_JDK_DEFLATER=true \
 			USE_JDK_INFLATER=true
@@ -98,13 +105,13 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 			TagBamWithReadSequenceExtended VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_celltagged} \
 			OUTPUT={bam_idtagged} \
-			BARCODE_QUALITY_TAG=UY \
+			BARCODE_QUALITY_TAG=QX \
 			SUMMARY={summary_tagged_molecular} \
-			BASE_RANGE="13-20" \
+			BASE_RANGE=13-20 \
 			BASE_QUALITY=10 \
 			BARCODED_READ=1 \
 			DISCARD_READ=true \
-			TAG_NAME=XU \
+			TAG_NAME=RX \
 			NUM_BASES_BELOW_QUALITY=1 \
 			USE_JDK_DEFLATER=true \
 			USE_JDK_INFLATER=true
@@ -114,45 +121,62 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 	log.sep()
 	return bam_idtagged
 
+def filter_bam(dropseq_jar: str, bam_tagged: str, bam_filtered: str):
+	execute(
+		f"""
+		java -Xms4g -jar {dropseq_jar} \
+		FilterBam \
+			INPUT={bam_tagged} \
+			OUTPUT={bam_filtered} \
+			TAG_REJECT=XQ \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
+		"""
+	)
+	# FILTER_PCR_DUPES=true ? what are pcr dupes anyways versus reads of same UMI?
+	# SUM_MATCHING_BASES=int 
+	# 	Retain reads that have at least this many M bases total in the cigar string. 
+	#	This sums all the M's in the cigar string.  Default value: null. 
+
+	return bam_filtered
+
 def trim_bam(dropseq_jar: str, bam_idtagged: str, bam_trimmed: str) -> str:
-	if not bam_idtagged.endswith("_idtagged.bam"):
-		log.error("Ensure bam_tagged ends in '_idtagged.bam'")
-	#bam_adaptertrimmed = bam_idtagged.replace("_idtagged.bam", "_adaptertrimmed.bam")
-	
 	dirname = os.path.dirname(bam_trimmed)
-	bam_adaptertrimmed = os.path.basename(bam_idtagged).replace("_idtagged.bam", "_adaptertrimmed.bam")
+	bam_adaptertrimmed = os.path.basename(bam_trimmed).replace("_trimmed.bam", "_adaptertrimmed.bam")
 	bam_adaptertrimmed = os.path.join(dirname, bam_adaptertrimmed)
 	summary_adaptertrimmed = os.path.join(dirname, "summary_trimming_adapter.txt")
 	summary_polyAtrimmed = os.path.join(dirname, "summary_trimming_polyA.txt")
-		
-	command = \
+	log.sep()
+	execute(
 		f"""
-		java -Dsamjdk.compression_level=1 -Xmx4g -jar {dropseq_jar} 
+		java -Xmx4g -jar {dropseq_jar} 
 		TrimStartingSequence VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_idtagged} \
 			OUTPUT={bam_adaptertrimmed} \
 			OUTPUT_SUMMARY={summary_adaptertrimmed} \
 			SEQUENCE=AAGCAGTGGTATCAACGCAGAGTGAATGGG \
 			MISMATCHES=0 \
-			NUM_BASES=5
+			NUM_BASES=5 \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
 		"""
+	)
 	log.sep()
-	execute(command)
-	log.sep()
-	command = \
+	execute(
 		f"""
-		java -Dsamjdk.compression_level=2 -Xmx4g -jar {dropseq_jar}
+		java -Xmx4g -jar {dropseq_jar}
 		PolyATrimmer VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_adaptertrimmed} \
 			OUTPUT={bam_trimmed} \
 			OUTPUT_SUMMARY={summary_polyAtrimmed} \
-			ADAPTER=^XU^XCACGTACTCTGCGTTGCTACCACTG \
+			ADAPTER=^RX^CRACGTACTCTGCGTTGCTACCACTG \
 			MISMATCHES=0 \
 			NUM_BASES=6 \
-			USE_NEW_TRIMMER=true
+			USE_NEW_TRIMMER=true \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
 		"""
-	log.sep()
-	execute(command)
+	)
 	log.sep()
 	return bam_trimmed
 
@@ -180,25 +204,115 @@ def remove_scoretags(bam: str) -> str:
 	return bam_detagged
 	
 
-def align_bam(bam_trimmed: str, fasta: str, sam_aligned: str) -> str:
-	"""Convert SAM to FASTQ using Picard then align to reference using STAR"""
+def bowtie2(bam_trimmed: str, fasta: str, sam_aligned: str) -> str:
+	"""Sort BAM using Picard then align to reference using bowtie2"""
 	if not sam_aligned.endswith("_aligned.sam"):
 		log.error("sam_aligned must end in '_aligned.sam'.")
-	#bam_detagged = remove_scoretags(bam_trimmed) # Avoid preserving empty score tags
-	#bam_sorted = bam_detagged.replace("_detagged.bam", "_sorted.bam")
 	bam_sorted = bam_trimmed.replace("_trimmed.bam", "_sorted.bam")
-	#pysam.sort("-n", "-o", bam_sorted, bam_detagged) # Sort by QNAME
 	pysam.sort("-n", "-o", bam_sorted, bam_trimmed) # Sort by QNAME
 	pysam.index(bam_sorted)
 
 	index_prefix = os.path.basename(fasta.split('.')[0])
 	index_prefix = os.path.join(os.path.dirname(sam_aligned), index_prefix)
-	command = f"bowtie2-build -f {fasta} --threads 32 {index_prefix}"
+	command = f"bowtie2-build -f {fasta} --threads 8 {index_prefix}"
 	log.sep()
 	execute(command)
-	command = f"bowtie2 -x {index_prefix} -a --very-sensitive-local -p 32 -S {sam_aligned} -b {bam_sorted} --preserve-tags"
+	command = \
+		f"""
+		bowtie2 -a --very-sensitive-local --norc \
+			-x {index_prefix} \
+			-p 8 \
+			-b {bam_sorted} \
+			-S {sam_aligned} \
+		"""
+	# Consider --norc to get rid of reverse mapped reads.
+	""" I tried this slightly stricter approach but i don't think it changed much
+	--ma 2 \
+	--mp 8,3 \
+	--rfg 6,4 \
+	--score-min G,20,5 \
+	"""
+	""" this made it worse if anything... somehow
+	-N 1 \
+	-L 15 \
+	-R 5 \
+	--ma 2 \
+	--mp 2,1 \
+	--rfg 0,1 \
+	--rdg 0,1 \
+	"""
+	""" same
+	--ma 2 \
+	--mp 2,1 \
+	--rfg 0,1 \
+	--rdg 0,1 \
+	"""
 	execute(command)
 	log.sep()
+	return sam_aligned
+
+def sam_to_fastq(picard_jar: str, bam: str, fastq: str) -> str:
+	command = \
+		f"""
+		java -Xms4g -jar {picard_jar} SamToFastq \
+			I={bam}
+			FASTQ={fastq}
+		"""
+	execute(command)
+	return fastq
+
+def bwa(fastq_trimmed: str, fasta: str, sam_aligned: str) -> str:
+	command = f"bwa index {fasta}"
+	execute(command)
+	command = f"bwa mem -M -t 8 -o {sam_aligned} -a {fasta} {fastq_trimmed}"
+	execute(command)
+	return sam_aligned
+
+def star(fastq_trimmed: str, fasta: str, basename: str, sam_aligned: str) -> str:
+	path = os.path.dirname(fasta)
+	ref_path = os.path.join(path, "ref")
+	ref_exists = True
+	if not os.path.exists(ref_path):
+		os.makedirs(ref_path)
+		ref_exists = False
+	else:
+		log.warn("STAR ref files detected, will not be generating a new reference.")
+
+	genome_length = 0
+	with open(fasta, 'r') as fastafile:
+		for line in fastafile:
+			if not line.startswith('>'):
+				genome_length += len(line.strip())
+	genomeSAindexNbases = math.floor(min(14, math.log(genome_length, 2) / 2 - 1))
+
+	if not ref_exists:
+		log.sep()
+		execute(
+			f"""
+			star --runMode genomeGenerate \
+				--runThreadN 4 \
+				--genomeDir {ref_path} \
+				--genomeFastaFiles {fasta} \
+				--genomeSAindexNbases {genomeSAindexNbases}
+			"""
+		)
+	log.sep()
+	execute(
+		f"""
+		star --runMode alignReads \
+			--runThreadN 4 \
+			--genomeDir {ref_path} \
+			--sjdbOverhang 149 \
+			--outFilterScoreMinOverLread 0 \
+			--outFilterMatchNminOverLread 0 \
+			--outFilterMatchNmin 0 \
+			--outFilterMultimapNmax 999 \
+			--readFilesIn {fastq_trimmed} \
+			--outFileNamePrefix {basename}
+		"""
+	)
+	log.sep()
+	os.rename(basename+"Aligned.out.sam", sam_aligned)
 	return sam_aligned
 
 def sort_sam(picard_jar: str, sam_aligned: str, bam_alignedsorted: str) -> str:
@@ -223,19 +337,19 @@ def create_sequence_dictionary(picard_jar: str, fasta: str) -> str:
 	elif fasta.endswith(".fasta"):
 		fasta_dict = fasta.replace(".fasta", '.dict')
 	if os.path.isfile(fasta_dict):
-		log.warn(f"{fasta_dict} already exists!")
-	else:
-		command = \
-			f"""
-			java -Xms4000m -jar {picard_jar} \
-			CreateSequenceDictionary \
-				R={fasta} \
-				O={fasta_dict}
-			"""
-		log.sep()
-		execute(command)
-		execute(f"chmod a+rw {fasta_dict}")
-		log.sep()
+		log.warn(f"{fasta_dict} already exists! Removing and creating new dict.")
+		os.remove(fasta_dict)
+	command = \
+		f"""
+		java -Xms4000m -jar {picard_jar} \
+		CreateSequenceDictionary \
+			R={fasta} \
+			O={fasta_dict}
+		"""
+	log.sep()
+	execute(command)
+	execute(f"chmod a+rw {fasta_dict}")
+	log.sep()
 	return fasta_dict
 
 def merge_bam(picard_jar: str, fasta: str, bam_trimmed: str, bam_alignedsorted: str, merged_bam: str):
@@ -243,16 +357,18 @@ def merge_bam(picard_jar: str, fasta: str, bam_trimmed: str, bam_alignedsorted: 
 	command = \
 		f"""
 		java -Dsamjdk.compression_level=1 -Xms4000m -jar {picard_jar} \
-			MergeBamAlignment VALIDATION_STRINGENCY=SILENT \
+		MergeBamAlignment VALIDATION_STRINGENCY=SILENT \
 			ALIGNED_BAM={bam_alignedsorted} \
 			UNMAPPED_BAM={bam_trimmed} \
 			OUTPUT={merged_bam} \
 			REFERENCE_SEQUENCE={fasta} \
-			ATTRIBUTES_TO_RETAIN=XS \
 			INCLUDE_SECONDARY_ALIGNMENTS=true \
+			MAX_INSERTIONS_OR_DELETIONS=-1 \
 			PAIRED_RUN=false \
 			SORT_ORDER=coordinate \
-			CLIP_ADAPTERS=false
+			CLIP_ADAPTERS=false \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
 		""" # There was a q after the last 'false'?
 	log.sep()
 	execute(command)
@@ -260,18 +376,86 @@ def merge_bam(picard_jar: str, fasta: str, bam_trimmed: str, bam_alignedsorted: 
 	return merged_bam
 
 def fauxtag_exons(bam_merged: str, bam_exontagged: str) -> str:
+	"""
+	This isn't really 'faux-tagging' anymore. This function writes a new BAM where
+	mapped forward reads are tagged accordingly with either TRA or TRB so that
+	Drop-Seq Tools merge and repair steps can proceed and potentially use this
+	info for Barcode collapsing.
+	"""
 	log.sep()
 	pysam.index(bam_merged)
 	log.info(f"Faux-tagging {bam_merged} to produce {bam_exontagged}.")
 	with pysam.AlignmentFile(bam_merged, 'rb') as untagged:
 		with pysam.AlignmentFile(bam_exontagged, 'wb', template=untagged) as tagged:
-			exon_tags = [("gf", "CODING", "Z"), ("gn", "GENEA", "Z"), ("gs", "+", "Z")]
+			exon_tags = [("gf", "CODING", "Z"), ("gn", "UKN", "Z"), ("gs", "+", "Z")]
 			for query in untagged:
+				if query.is_unmapped or query.is_reverse:
+					continue
+				if "TRA" in query.reference_name:
+					exon_tags[1] = ("gn", "TRA", "Z")
+				elif "TRB" in query.reference_name:
+					exon_tags[1] = ("gn", "TRB", "Z")
+				else:
+					raise Exception(f"Unknown gene in {query.reference_name}!")
 				tags = list(query.get_tags())
-				query.set_tags(tags+exon_tags)
+				query.set_tags(tags + exon_tags)
 				tagged.write(query)
 	log.sep()
 	return bam_exontagged
+
+def bead_substitution_errors(dropseq_jar: str, bam: str, bam_out: str, min_umis_per_cell: int=1) -> str:
+	dirname = os.path.dirname(bam_out)
+	report_substitution_error = os.path.join(dirname, "report_substitution_error.txt")
+	log.sep()
+	execute(
+		f"""
+		java -Xmx4g -jar {dropseq_jar} \
+		DetectBeadSubstitutionErrors VALIDATION_STRINGENCY=SILENT \
+			VERBOSITY=DEBUG \
+			INPUT={bam} \
+			OUTPUT={bam_out} \
+			MIN_UMIS_PER_CELL={min_umis_per_cell} \
+			READ_MQ=10 \
+			FREQ_COMMON_SUBSTITUTION=0.8 \
+			CELL_BARCODE_TAG=CR \
+			OUT_CELL_BARCODE_TAG=CR \
+			MOLECULAR_BARCODE_TAG=RX \
+			NUM_THREADS=4 \
+			OUTPUT_REPORT={report_substitution_error} \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
+		"""
+	)
+	log.sep()
+	return
+
+def bead_synthesis_errors(dropseq_jar: str, bam: str, bam_out: str, min_umis_per_cell: int=1) -> str:
+	dirname = os.path.dirname(bam_out)
+	stats_synthesis_error = os.path.join(dirname, "stats_synthesis_error.txt")
+	summary_synthesis_error = os.path.join(dirname, "summary_synthesis_error.txt")
+	report_synthesis_error = os.path.join(dirname, "report_synthesis_error.txt")
+	log.sep()
+	execute(
+		f"""
+		java -Xmx4g -jar {dropseq_jar} \
+		DetectBeadSynthesisErrors VALIDATION_STRINGENCY=SILENT \
+			VERBOSITY=DEBUG \
+			INPUT={bam} \
+			OUTPUT_STATS={stats_synthesis_error} \
+			SUMMARY={summary_synthesis_error} \
+			REPORT={report_synthesis_error} \
+			CELL_BARCODE_TAG=CR \
+			MOLECULAR_BARCODE_TAG=RX \
+			MIN_UMIS_PER_CELL={min_umis_per_cell} \
+			READ_MQ=10 \
+			NUM_THREADS=4 \
+			OUTPUT={bam_out} \
+			USE_JDK_DEFLATER=true \
+			USE_JDK_INFLATER=true
+		"""
+	)
+	log.sep()
+	return bam_out
 
 def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umis_per_cell: int=1):
 	"""
@@ -285,7 +469,6 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 	dirname = os.path.dirname(bam_repaired)
 	bam_subrepaired = os.path.basename(bam_exontagged).replace("_exontagged.bam", "_subrepaired.bam")
 	bam_subrepaired = os.path.join(dirname, bam_subrepaired)
-	report_substitution_error = os.path.join(dirname, "report_substitution_error.txt")
 	stats_synthesis_error = os.path.join(dirname, "stats_synthesis_error.txt")
 	summary_synthesis_error = os.path.join(dirname, "summary_synthesis_error.txt")
 	report_synthesis_error = os.path.join(dirname, "report_synthesis_error.txt")
@@ -297,7 +480,9 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 			INPUT={bam_exontagged} \
 			OUTPUT={bam_subrepaired} \
 			MIN_UMIS_PER_CELL={min_umis_per_cell} \
-			MOLECULAR_BARCODE_TAG=XU \
+			READ_MQ=10 \
+			CELL_BARCODE_TAG=CR \
+			MOLECULAR_BARCODE_TAG=RX \
 			NUM_THREADS=4 \
 			OUTPUT_REPORT={report_substitution_error}
 		"""
@@ -310,18 +495,20 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 		DetectBeadSynthesisErrors VALIDATION_STRINGENCY=SILENT \
 			VERBOSITY=DEBUG \
 			INPUT={bam_subrepaired} \
-			MIN_UMIS_PER_CELL={min_umis_per_cell} \
 			OUTPUT_STATS={stats_synthesis_error} \
 			SUMMARY={summary_synthesis_error} \
 			REPORT={report_synthesis_error} \
-			MOLECULAR_BARCODE_TAG=XU \
+			CELL_BARCODE_TAG=CR \
+			MOLECULAR_BARCODE_TAG=RX \
+			MIN_UMIS_PER_CELL={min_umis_per_cell} \
+			READ_MQ=10 \
 			NUM_THREADS=4 \
 			OUTPUT={bam_repaired}
 		"""
 	log.sep()
 	execute(command)
 	log.sep()
-	bam_repairedsorted = bam_repaired.replace(".bam", "_sorted.bam") 
+	bam_repairedsorted = bam_repaired.replace(".bam", "sorted.bam") 
 	print(f"Sorting bam to produce {bam_repairedsorted}...")
 	pysam.sort("-o", bam_repairedsorted, bam_repaired)
 	return bam_repairedsorted
@@ -333,7 +520,7 @@ def collapsebarcodesinplace(dropseq_jar: str, bam: str, bam_output: str):
 		java -jar {dropseq_jar} CollapseBarcodesInPlace \
 			INPUT={bam} \
 			OUTPUT={bam_output} \
-			PRIMARY_BARCODE=XC \
+			PRIMARY_BARCODE=CR \
 			EDIT_DISTANCE=1 \
 			FIND_INDELS=true \
 			OUT_BARCODE=XC \

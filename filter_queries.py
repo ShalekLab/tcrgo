@@ -26,7 +26,7 @@ def main(args):
 	log.info("Parsing input data...")
 	bam = io.sort_and_index(args.bam, args.output_path)
 	log.info("Fetching unique queries which contain alignments to V and J and grouping them by Barcode-UMI...")
-	queries_VJ, queries_nonVJ = io.parse_queries(bam)
+	queries_VJ, queries_nonVJ = io.parse_queries(bam, args.barcode_tag, args.umi_tag)
 	log.info(f"Fetched {len(queries_VJ)} VJ reads and {len(queries_nonVJ)} non-VJ reads.")
 	bam.close()
 
@@ -69,7 +69,7 @@ if __name__ == "__main__":
 	# REQUIRED ARGUMENTS
 	parser.add_argument(
 		"bam", 
-		type=Path,
+		type=str,
 		metavar="<ALIGNED BAM FROM ALIGNMENT SCRIPT>",
 		help=
 			"Path to single-end tagged, trimmed, aligned, repaired BAM. IMPORTANT: "
@@ -103,12 +103,24 @@ if __name__ == "__main__":
 		type=int,
 		default=2020,
 		help=
-			"The seed for pseudo-random subsampling of reads for UMIs that"
+			"The seed for pseudo-random subsampling of reads for UMIs that "
 			"exceed the maximum number of reads (default: %(default)d)."
 	)
 	parser.add_argument(
+		'-b', "--barcode-tag", 
+		type=str,
+		default="CR",
+		help="The BAM tag which represents the cell barcode sequence. (default: %(default)s )."
+	)
+	parser.add_argument(
+		'-u', "--umi-tag", 
+		type=str,
+		default="RX",
+		help="The BAM tag which represents the unique molecular barcode sequence. (default: %(default)s )."
+	)
+	parser.add_argument(
 		'-o', "--output-path", 
-		type=Path,
+		type=str,
 		default="./out/queries/",
 		help="The path to which the files from this program will output. (default: %(default)s )."
 	)

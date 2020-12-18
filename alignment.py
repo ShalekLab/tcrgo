@@ -5,6 +5,7 @@ import argparse
 from textwrap import dedent, indent
 from pathlib import Path
 import os
+import pysam
 
 from tcrgo import Log
 log = Log(name=__name__)
@@ -28,25 +29,30 @@ def main(args):
 	"""
 	log.init(args.verbosity)
 	log.info("Verifying that Drop-Seq Tools, Picard, and Bowtie2 are all callable...")
-	ds.test_tools(args.dropseq, args.picard)
+	ds.test_tools(args.dropseq, args.picard, args.aligner)
 
 	if not os.path.exists(args.output_path):
 		os.makedirs(args.output_path)
 	if args.basename is None:
 		args.basename = os.path.basename(args.data[0].split('.')[0])
 
+	# Files are produced in this order
 	basename = os.path.join(args.output_path, args.basename)
 	fastq_singleend = basename + ".fastq"
 	fastq_barcode = basename + "_R1.fastq"
 	fastq_biological = basename + "_TCR.fastq"
 	bam_unmapped = basename + "_unmapped.bam"
 	bam_idtagged = basename + "_idtagged.bam"
+	bam_filtered = basename + "_filtered.bam"
 	bam_trimmed = basename + "_trimmed.bam"
+	fastq_trimmed = basename + "_trimmed.fastq"
 	sam_aligned = basename + "_aligned.sam"
 	bam_alignedsorted = basename + "_alignedsorted.bam"
 	bam_merged = basename +"_merged.bam"
 	bam_exontagged = basename + "_exontagged.bam"
+	bam_synthrepaired = basename + "_synthrepaired.bam"
 	bam_repaired = basename + "_repaired.bam"
+	bam_repairedsorted = basename + "_repairedsorted.bam"
 
 	log.info("Checking sequence data and FASTA arguments.") 
 	if not os.path.isfile(args.fasta):
@@ -62,7 +68,7 @@ def main(args):
 
 	if is_bam and not os.path.isfile(fastq_singleend):
 		log.info("Converting raw BAM to single-end FASTQ...")
-		ds.bam_to_fastq(bam_singleend, fastq_singleend)
+		ds.bam2fq(bam_singleend, fastq_singleend)
 	if is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological):
 		log.info("Transforming Read1-index-1 FASTQ to Read1 and Read2 FASTQs")
 		ds.transform_read_data(fastq_singleend, args.basename, fastq_barcode, fastq_biological, args.output_path)
@@ -72,12 +78,21 @@ def main(args):
 	if not os.path.isfile(bam_idtagged):
 		log.info("Tagging BAM with cell barcode and UMI sequences...")
 		ds.tag_identifiers_bam(args.dropseq, bam_unmapped, bam_idtagged)
+	if not os.path.isfile(bam_filtered):
+		log.info("Filtering reads with low quality bases in cell barcode and UMI.")
+		ds.filter_bam(args.dropseq, bam_idtagged, bam_filtered)
 	if not os.path.isfile(bam_trimmed):
 		log.info("Trimming adapter and poly A sequences...")
-		ds.trim_bam(args.dropseq, bam_idtagged, bam_trimmed)
+		#ds.trim_bam(args.dropseq, bam_idtagged, bam_trimmed)
+		ds.trim_bam(args.dropseq, bam_filtered, bam_trimmed)
 	if not os.path.isfile(sam_aligned):
-		log.info("Aligning BAM using Bowtie2")
-		ds.align_bam(bam_trimmed, args.fasta, sam_aligned)
+		log.info(f"Aligning BAM using {args.aligner}")
+		if args.aligner == "bowtie2":
+			ds.bowtie2(bam_trimmed, args.fasta, sam_aligned)
+		elif args.aligner == "star":
+			if not os.path.isfile(fastq_trimmed):
+				ds.bam2fq(bam_trimmed, fastq_trimmed)
+			ds.star(fastq_trimmed, args.fasta, basename, sam_aligned)
 	if not os.path.isfile(bam_alignedsorted):
 		log.info("Sorting aligned SAM by queryname, outputting as BAM.")
 		ds.sort_sam(args.picard, sam_aligned, bam_alignedsorted)
@@ -87,11 +102,17 @@ def main(args):
 		log.info("Merging the aligned BAM with the unmapped BAM to recover info for repair.")
 		ds.merge_bam(args.picard, args.fasta, bam_trimmed, bam_alignedsorted, bam_merged)
 	if not os.path.isfile(bam_exontagged):
-		log.info("Faux-tagging the merged BAM with dummy exon info.")
+		#log.info("Faux-tagging the merged BAM with dummy exon info.")
+		log.info("Tagging the merged BAM with TRA/TRB exon info.")
 		ds.fauxtag_exons(bam_merged, bam_exontagged)
 	if not os.path.isfile(bam_repaired):
-		log.info("Repairing substitution and indel errors in the BAM barcode sequences.")
-		ds.repair_bam(args.dropseq, bam_exontagged, bam_repaired, min_umis_per_cell=1)
+		log.info("Repairing insertion-deletion errors in the cell barcode sequences.")
+		#ds.repair_bam(args.dropseq, bam_exontagged, bam_repaired, min_umis_per_cell=1)
+		ds.bead_synthesis_errors(args.dropseq, bam_exontagged, bam_synthrepaired, min_umis_per_cell=1)
+		log.info("Repairing substitution errors in the cell barcode sequences and collapsing barcodes.")
+		ds.bead_substitution_errors(args.dropseq, bam_synthrepaired, bam_repaired, min_umis_per_cell=1)
+		log.info("Sorting bam by coordinate, outputting final BAM.")
+		pysam.sort("-o", bam_repairedsorted, bam_repaired)
 	log.success("DONE")
 
 if __name__ == "__main__":
@@ -141,7 +162,6 @@ if __name__ == "__main__":
 		required=True,
 		help="Path to reference FASTA."
 	)
-
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(
 		'-v', "--verbosity", 
@@ -163,6 +183,16 @@ if __name__ == "__main__":
 		type=str,
 		default="./out/alignment/",
 		help="The path to which the files from this program will output. (default: %(default)s )."
+	)
+	parser.add_argument(
+		'-a', "--aligner",
+		type=str,
+		default="bowtie2",
+		choices=["bowtie2", "star"],
+		required=False,
+		help=
+			"The aligner the program will choose for aligning the sequence data "
+			"against the reference FASTA. (default: %(default)s )."
 	)
 	args = parser.parse_args()
 	main(args)

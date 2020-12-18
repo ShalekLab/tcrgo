@@ -17,6 +17,7 @@ FASTA = pysam.libcfaidx.FastaFile
 from .read import Read
 from .umi import UMI
 from .barcode import Barcode
+from .reference import ReferenceDict
 
 from ..log import Log
 log = Log(name=__name__)
@@ -52,9 +53,9 @@ class BAMDict(object):
 	def __missing__(self, key):
 		raise KeyError("No Barcode in BAMDict")
 
-	def __del__(self):
-		self.close()
-		del self
+	#def __del__(self):
+	#	self.bam.close()
+	#	del self
 
 	def _keys(self) -> List[str]:
 		return self.barcodes.keys()
@@ -77,34 +78,28 @@ class BAMDict(object):
 	def get_umi_sequences(self) -> List[str]:
 		umi_seqs = []
 		for barcode in self.get_barcodes():
-			for umi_seq in barcode.get_umi_sequences():
-				umi_seqs.append(umi_seq)
+			umi_seqs += barcode.get_umi_sequences()
 
 	def get_umis(self) -> List[UMI]:
 		umis = []
 		for barcode in self.get_barcodes():
-			for umi in barcode.get_umis():
-				umis.append(umi)
+			umis += barcode.get_umis()
 		return umis
 
 	def get_read_query_names(self) -> List[str]:
 		read_qnames = []
-		umis = self.get_umis()
-		for umi in umis:
-			for read_qname in umi.get_read_query_names():
-				read_qnames.append(read_qname)
+		for umi in self.get_umis():
+			read_qnames += self.get_read_query_names()
 		return read_qnames
 
 	def get_reads(self) -> List[Read]:
-		reads = []
-		umis = self.get_umis()
-		for umi in umis:
-			for read in umi.get_reads():
-				reads.append(read)
+		reads = [] 
+		for umi in self.get_umis():
+			reads += umi.get_reads()
 		return reads
 
 	@log.time
-	def build(self, id_queries: List[str]):
+	def build(self, id_queries: List[str], refdict: ReferenceDict):
 		log.info("Building BAM Index in memory for fetching VJ queries")
 		bam_indexed = pysam.IndexedReads(self.bam)
 		bam_indexed.build()
@@ -114,7 +109,7 @@ class BAMDict(object):
 		for id_query in id_queries:
 			barcode, umi, query_name = id_query.split('|') 
 			read = Read(query_name)
-			read.parse_alignments(bam_indexed)
+			read.parse_alignments(bam_indexed, refdict)
 			if read.top_V is None or read.top_J is None:
 				log.error(f"Should have gotten a top V and J for {query_name} but did not!")
 			if barcode not in self:
@@ -134,7 +129,7 @@ class BAMDict(object):
 		with open(filename, 'w') as tiebreaks:
 			tiebreaks.write("Winner\tLoser\tMethod\tCount\n")
 			for case, count in ties_aggregated.items():
-				winner, loser, method = case.split('|')
+				winner, loser, method = case
 				tiebreaks.write(f"{winner}\t{loser}\t{method}\t{count}\n")		
 
 	# TODO: Move to Read file, adjust, and call for each read from reconstruct_tcrs instead
@@ -161,7 +156,9 @@ class BAMDict(object):
 			cdr3_info.write(
 				"BC_index\tUMI_index\tBC\tUMI\tnReads\t"
 				"topVJ_region\ttopVJ_nReads\ttopVJ_freq\t"
-				"CDR3_nuc\tCDR3_nReads\tCDR3_freq\t"
+				"CDR3_nt\tCDR3_aa\tCDR3_isProductive\t"
+				"CDR3_nReads\tCDR3_freq\tCDR3_stopcodons\t"
+				"TCR_nt\tTCR_orf\tTCR_aa\t"
 				"TRAV_nReads\tTRAJ_nReads\tTRAC_nReads\t"
 				"TRBV_nReads\tTRBJ_nReads\tTRBC_nReads\t"
 				"UNKN_nReads\n"
@@ -173,7 +170,9 @@ class BAMDict(object):
 					cdr3_info.write(
 						f"{b}\t{u}\t{barcode_seq}\t{umi_seq}\t{len(umi)}\t"
 						f"{umi.top_VJ}\t{umi.count_top_VJ}\t{umi.frequency_top_VJ:.3f}\t"
-						f"{umi.top_cdr3}\t{umi.count_top_cdr3}\t{umi.frequency_top_cdr3:.3f}\t"
+						f"{str(umi.top_cdr3.seq_nt)}\t{str(umi.top_cdr3.seq_aa)}\t{umi.top_cdr3.is_productive}\t"
+						f"{umi.count_top_cdr3}\t{umi.frequency_top_cdr3:.3f}\t{len(umi.top_cdr3.transcript.stops)}\t"
+						f"{str(umi.top_cdr3.transcript.seq_nt)}\t{umi.top_cdr3.transcript.orf}\t{str(umi.top_cdr3.transcript.seq_aa)}\t"
 						f"{umi.counts_region['TRAV']}\t{umi.counts_region['TRAJ']}\t{umi.counts_region['TRAC']}\t"
 						f"{umi.counts_region['TRBV']}\t{umi.counts_region['TRBJ']}\t{umi.counts_region['TRBC']}\t"
 						f"{umi.counts_region['UNKN']}\n"
