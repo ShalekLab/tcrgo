@@ -2,7 +2,7 @@
 This is the second script of the python pipeline. 
 It is meant to take the filtered reads, find the top V and J alignments,
 reconstruct the CDR3 sequences.
-Run using python -m reconstruct_tcrs <args>
+Run using python -m recover_cdr3s <args>
 
 Requirements:
 	Python 3.8.5, samtools, pysam 
@@ -48,7 +48,6 @@ def main(args):
 	# Perform de Bruijn graph sequence assembly on partially mapped reads.
 	bamdict.build(id_queries, refdict)
 	log.info("Finished retrieving top V and J alignments for each query.")
-
 	log.info(f"Got {len(bamdict.get_barcodes())} barcode(s), "
 			f"{len(bamdict.get_umis())} UMI(s) and "
 			f"{len(bamdict.get_reads())} reads total")
@@ -58,26 +57,25 @@ def main(args):
 		for umi in barcode.get_umis():
 			umi.count_regions()
 			umi.resolve_alignment_identities(refdict)
-			reads_VJ = umi.get_top_VJ_reads()
+			reads_VJ = umi.get_top_VJ_reads(args.disclude_relatives)
 			if len(reads_VJ) >= args.minimum_cdr3s \
 				and umi.frequency_top_VJ >= args.minimum_frequency:
 				for read in reads_VJ:
 					read.get_cdr3()
 				umi.select_cdr3(reads_VJ)
-			#barcode.resolve_cdr3s() # TODO: Edit distance on barcode level?
-			# Should probably weight by freq?
+
 	log.info("Finished recovering CDR3 sequences for all VJ reads"
 		 "and recovered top CDR3 for each UMI.")
 	bamdict.write_cdr3_info(args.worker, args.output_path)
 	log.info("Writing reference info for alignment tiebreaks.")
 	bamdict.write_tiebreaks_alignments(args.worker, args.output_path)
 	bamdict.close()
-	log.success("Done")
+	log.success("DONE")
 
 if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser(
-		prog="python -m reconstruct_tcrs", # Would be good to make a command-line alias and set that here
+		prog="python -m recover_cdr3s", # Would be good to make a command-line alias and set that here
 		usage="",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		description=dedent(
@@ -166,6 +164,19 @@ if __name__ == "__main__":
 			"After a top VJ combination is found, revisit non-top-VJ-combination reads "
 			"to reclaim for CDR3 reconstruction reads which have primary OR high-scoring " 
 			"secondary alignments to top V and J."
+	)
+	
+	parser.add_argument(
+		'-r', "--disclude-relatives",
+		action="store_true",
+		help=
+			"When identifying the VJ combination for a UMI, "
+			"only take for CDR3 recovery reads whose top VJ is exactly equal "
+			"to the highest counted segment variants. If not enabled, all reads "
+			"are taken that match the highest counted segment's root (ex: TRAV24-1 "
+			"is the top V for the UMI, but TRAV24-2 reads are also gathered for "
+			"CDR3 recovery). Regardless the top segment's specific variant will be "
+			"reported in the output information."
 	)
 	# TODO: Figure out why verbosity isn't working across modules.
 	parser.add_argument(

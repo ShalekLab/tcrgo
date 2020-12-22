@@ -108,7 +108,7 @@ class UMI(object):
 						for candidate in read[segment][1:]]):
 						method = "Root"
 						read[segment] = read[segment][0]
-						ref_winner = root+'-?'
+						ref_winner = root + '-?'
 					else:
 						method = "Alphabetical"
 						read[segment] = read[segment][0]
@@ -125,15 +125,17 @@ class UMI(object):
 				#if read[segment+"_reference"] is None: 
 					#log.verbose(read) # DEBUG
 
-	# TODO: Make disclude_relatives an argument
-	def get_top_VJ_reads(self, include_relatives: bool=True) -> List[Read]:
+	# TODO: Two dicts to count by root and specific variant.
+	# If not exclude_relatives, get all reads that match root of top variant
+	# Regardless, report top variant
+	def get_top_VJ_reads(self, exclude_relatives: bool=False) -> List[Read]:
 		counts_VJ = Counter()
 		reads_VJ = defaultdict(list)
 		for read in self.get_reads():
-			if include_relatives:
-				refs_VJ = (read.top_V_reference.root, read.top_J_reference.root)
-			else:
+			if exclude_relatives:
 				refs_VJ = (read.top_V_reference.name, read.top_J_reference.name)
+			else:
+				refs_VJ = (read.top_V_reference.root, read.top_J_reference.root)
 			reads_VJ[refs_VJ].append(read)
 			counts_VJ[refs_VJ] += 1
 		self.top_VJ = max(counts_VJ, key=counts_VJ.get)

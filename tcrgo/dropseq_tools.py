@@ -471,6 +471,7 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 	bam_subrepaired = os.path.join(dirname, bam_subrepaired)
 	stats_synthesis_error = os.path.join(dirname, "stats_synthesis_error.txt")
 	summary_synthesis_error = os.path.join(dirname, "summary_synthesis_error.txt")
+	report_substitution_error = os.path.join(dirname, "report_substitution_error.txt")
 	report_synthesis_error = os.path.join(dirname, "report_synthesis_error.txt")
 	command = \
 		f"""
