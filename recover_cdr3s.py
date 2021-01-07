@@ -1,14 +1,14 @@
 """
 This is the second script of the python pipeline. 
 It is meant to take the filtered reads, find the top V and J alignments,
-reconstruct the CDR3 sequences.
+reconstruct the CDR3 sequences and select the most representative CDR3.
 Run using python -m recover_cdr3s <args>
 
 Requirements:
-	Python 3.8.5, samtools, pysam 
+	Python >3.8.5, samtools, pysam, biopython, pandas
 """
 import argparse
-import os.path as osp
+import os.path
 from textwrap import dedent, indent
 import pysam
 
@@ -18,10 +18,9 @@ from pathlib import Path
 from tcrgo.bam import BAMDict, ReferenceDict
 import tcrgo.io as io
 from tcrgo import Log
-log = Log(name=__name__)
+log = Log("root")
 
 def main(args):
-	
 	log.init(args.verbosity)
 	log.info("Parsing input data...")
 	bam = io.sort_and_index(args.bam, args.output_path)
@@ -37,10 +36,12 @@ def main(args):
 
 	log.info("Fetching filtered queries containing alignments to both V and J segments.")
 	if args.query_list is not None:
-		id_queries = io.read_query_list(args.query_list)
-		args.worker = io.get_worker_id(args.query_list)
+		queries_filename = args.query_list
+		worker = io.get_worker_id(args.query_list)
 	else:
-		id_queries = io.read_id_queries(args.input_path, args.worker)
+		worker = args.worker
+		queries_filename = os.path.join(args.input_path, f"queries{worker}.tsv")
+	id_queries = io.read_queries(queries_filename)
 
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
@@ -48,34 +49,40 @@ def main(args):
 	# Perform de Bruijn graph sequence assembly on partially mapped reads.
 	bamdict.build(id_queries, refdict)
 	log.info("Finished retrieving top V and J alignments for each query.")
+	num_umis = len(bamdict.get_umis())
 	log.info(f"Got {len(bamdict.get_barcodes())} barcode(s), "
-			f"{len(bamdict.get_umis())} UMI(s) and "
-			f"{len(bamdict.get_reads())} reads total")
-
-	log.info(f"{len(bamdict.get_umis())}")
+			f"{num_umis} UMI(s) and "
+			f"{len(bamdict.get_reads())} read(s) total")
+	
+	log.info("For each UMI, resolving V and J alignment identities "
+	 	"and selecting the most representative CDR3 sequences...")
+	count = 0
+	report_interval = max(1, num_umis // 50)
 	for barcode in bamdict.get_barcodes():
 		for umi in barcode.get_umis():
 			umi.count_regions()
 			umi.resolve_alignment_identities(refdict)
-			reads_VJ = umi.get_top_VJ_reads(args.disclude_relatives)
+			reads_VJ = umi.get_top_VJ_reads(args.exclude_relatives)
 			if len(reads_VJ) >= args.minimum_cdr3s \
 				and umi.frequency_top_VJ >= args.minimum_frequency:
 				for read in reads_VJ:
 					read.get_cdr3()
 				umi.select_cdr3(reads_VJ)
+			count += 1
+			if count % report_interval == 0:
+				log.info(f"Processed {count} UMIs ({(count / num_umis):.0%}).")
 
 	log.info("Finished recovering CDR3 sequences for all VJ reads"
 		 "and recovered top CDR3 for each UMI.")
-	bamdict.write_cdr3_info(args.worker, args.output_path)
+	bamdict.write_cdr3_info(worker, args.output_path)
 	log.info("Writing reference info for alignment tiebreaks.")
-	bamdict.write_tiebreaks_alignments(args.worker, args.output_path)
+	bamdict.write_tiebreaks_alignments(worker, args.output_path)
 	bamdict.close()
 	log.success("DONE")
 
 if __name__ == "__main__":
-
 	parser = argparse.ArgumentParser(
-		prog="python -m recover_cdr3s", # Would be good to make a command-line alias and set that here
+		prog="python -m recover_cdr3s", # TODO: Would be good to make a command-line alias and set that here
 		usage="",
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 		description=dedent(
@@ -88,7 +95,7 @@ if __name__ == "__main__":
 		),
 		epilog=dedent(
 			"""
-			Developed by James Gatter & Sarah Nyquist of Shalek Lab (2020). 
+			Developed by James Gatter & Sarah Nyquist of Shalek Lab (2020-2021). 
 			Original Matlab pipeline written by Andy Tu and Tod Gierhann of Love Lab (2019).
 			"""
 		)
@@ -157,17 +164,16 @@ if __name__ == "__main__":
 	)
 	# TODO: This never happened. Perhaps repurpose for an additional check on the barcode level?
 	# Ask Sarah if that's needed.
+	#parser.add_argument(
+	#	'-s', "--second-pass",
+	#	action="store_true",
+	#	help=
+	#		"After a top VJ combination is found, revisit non-top-VJ-combination reads "
+	#		"to reclaim for CDR3 reconstruction reads which have primary OR high-scoring " 
+	#		"secondary alignments to top V and J."
+	#)
 	parser.add_argument(
-		'-s', "--second-pass",
-		action="store_true",
-		help=
-			"After a top VJ combination is found, revisit non-top-VJ-combination reads "
-			"to reclaim for CDR3 reconstruction reads which have primary OR high-scoring " 
-			"secondary alignments to top V and J."
-	)
-	
-	parser.add_argument(
-		'-r', "--disclude-relatives",
+		'-r', "--exclude-relatives",
 		action="store_true",
 		help=
 			"When identifying the VJ combination for a UMI, "

@@ -6,13 +6,10 @@ import pysam
 import os
 from textwrap import dedent
 import math
-
-from pathlib import Path
 from typing import List, Tuple, Dict
-
 from tcrgo.log import Log
-log = Log(name=__name__)
-log.formatter.datefmt = "%H:%M:%S"
+
+log = Log("root")
 
 def execute(command: str) -> str:
 	try:
@@ -62,7 +59,7 @@ def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam
 			SORT_ORDER=queryname \
 			USE_JDK_DEFLATER=true \
 			USE_JDK_INFLATER=true
-		""" # Might need "SAMPLE_NAME" arg?
+		"""
 	log.sep()
 	execute(command)
 	log.sep()
@@ -225,28 +222,6 @@ def bowtie2(bam_trimmed: str, fasta: str, sam_aligned: str) -> str:
 			-b {bam_sorted} \
 			-S {sam_aligned} \
 		"""
-	# Consider --norc to get rid of reverse mapped reads.
-	""" I tried this slightly stricter approach but i don't think it changed much
-	--ma 2 \
-	--mp 8,3 \
-	--rfg 6,4 \
-	--score-min G,20,5 \
-	"""
-	""" this made it worse if anything... somehow
-	-N 1 \
-	-L 15 \
-	-R 5 \
-	--ma 2 \
-	--mp 2,1 \
-	--rfg 0,1 \
-	--rdg 0,1 \
-	"""
-	""" same
-	--ma 2 \
-	--mp 2,1 \
-	--rfg 0,1 \
-	--rdg 0,1 \
-	"""
 	execute(command)
 	log.sep()
 	return sam_aligned

@@ -15,7 +15,6 @@ def levenshtein_distance(sequence1: Seq, sequence2: Seq) -> int:
 	# Initialize ED(b, empty string prefix of a) = j
 	for j in range(len(sequence2)+1):
 		edit_distances[0][j] = j
-
 	for i in range(1, len(sequence1)+1):
 		for j in range(1, len(sequence2)+1):
 			distance_horizontal = edit_distances[i][j-1] + 1 # indel from b to a, penalty +1
@@ -30,7 +29,7 @@ def levenshtein_distance(sequence1: Seq, sequence2: Seq) -> int:
 
 def hamming_distance(sequence1: Seq, sequence2: Seq) -> int:
 	if len(sequence1) != len(sequence2):
-		raise Exception("Sequences are not of the same length.")
+		raise ValueError("Sequences are not of the same length.")
 	count_mismatches = 0
 	for i in range(len(sequence1)):
 		if sequence1[i] != sequence2[i]:
@@ -50,16 +49,12 @@ def find_all(seq: Seq, residue: str, \
 	positions = list()
 	start = start_index
 	end = end_slice
-	print("Looking for", residue)
-	print(seq)
 	while start < end:
-		print(f"	{seq[start:end]} start={start} end={end}")
 		position = seq.find(residue, start, end)
 		if position == -1:
 			break
 		positions.append(position)
 		start = position + 1
-	print(f"	returning {positions}")
 	return tuple(positions)
 
 def find_all_in_frames(seqs_aa: Tuple[Seq, ...], residue: str, \
@@ -78,17 +73,10 @@ def find_all_in_frames(seqs_aa: Tuple[Seq, ...], residue: str, \
 		if are_from_end:
 			start_index = len(seq) - start_index
 		positions = find_all(seq, residue, start_index, end_slice)
-		frames_positions[f] = tuple([pos * mult + has_frame_offset * f for pos in positions])
+		frames_positions[f] = tuple(
+			[pos * mult + has_frame_offset * f for pos in positions]
+		)
 	return tuple(frames_positions)
-
-def has_cdr1(seqs_aa: Tuple[Seq, ...]) -> List[bool]:
-	cdr1_starts = find_all_in_frames(seqs_aa, 'C', 19, 24)
-	cdr1_ends = find_all_in_frames(seqs_aa, 'W', 28, 44)
-	has_cdr1 = [False, False, False]
-	for f in range(3):
-		if cdr1_starts[f] and cdr1_ends[f]:
-			has_cdr1[f] = True
-	return has_cdr1
 
 def get_frame_max(frames: Tuple[Tuple[Any, ...], ...]) -> Set[int]:
 	frames_max = set()
@@ -113,67 +101,6 @@ def get_frame_min(frames: Tuple[Tuple[Any, ...], ...]) -> Set[int]:
 		elif count == count_min:
 			frames_min.add(i)
 	return frames_min
-
-'''
-def find_all_by_frames(sequences_aa: Seq, residue: str, \
-	start_index: int=0, stop_from_end: int=0) -> Tuple[Optional[int], ...]:
-	"""Search for a residue and return a list of positions for each frame"""
-	#frame_positions = [list(), list(), list()]
-	#for frame in range(3):
-		sequence = sequences_aa[frame]
-		start = start_index
-		end = len(sequence) - stop_from_end # endslice
-		while start < end:
-			position = sequence.find(residue, start, end)
-			if position == -1:
-				break
-			frame_positions[frame].append(position * 3 + frame)
-			start = position + 1
-		frame_positions[frame] = tuple(frame_positions[frame])
-	return tuple(frame_positions)
-'''
-
-# TODO: This method could use the rfind and a stack approach to ditch the sorting.
-def find_cdr3_start_via_aa(sequence: Seq, distance_from_end: int=6) -> Optional[List[int]]:
-	sequences_aa = dict()
-	for frame in (0,1,2):
-		end = len(sequence) - ((len(sequence) - frame) % 3)
-		sequences_aa[frame] = sequence[frame:end].translate()
-	positions = list()
-	for frame, sequence in sequences_aa.items():
-		start = len(sequence) - distance_from_end
-		end = len(sequence) # endslice
-		while start < end:
-			position = sequence.find('C', start, end)
-			if position == -1:
-				break
-			positions.append(position * 3 + frame)	
-			start = position + 1
-	if positions:
-		return sorted(positions, reverse=False)
-	else:
-		return None
-
-# TODO: ditch the sorting.
-def find_cdr3_end_via_aa(sequence: Seq, index_start: int=0, length: int=11) -> Optional[List[int]]:
-	sequences_aa = list()
-	for frame in (0,1,2):
-		end = len(sequence) - ((len(sequence) - frame) % 3)
-		sequences_aa.append((frame, sequence[frame:end].translate()))
-	positions = list()
-	for frame, sequence in sequences_aa:
-		start = index_start // 3
-		end = length + 1 # endslice
-		while start < end:
-			position = sequence.find('F', start, end)
-			if position == -1:
-				break
-			positions.append(position * 3 + frame + 2)	
-			start = position + 1
-	if positions:
-		return sorted(positions, reverse=True)
-	else:
-		return None
 
 def contains_indels(alignment: AlignedSegment) -> bool:
 	"""Return true if insertions or deletions present in CIGAR"""
@@ -234,18 +161,12 @@ def get_consensus_sequence(seq_counts: Dict[Seq, int]) -> Seq:
 def incorporate_mismatches_deletions(md_string: str, output: List[str], start: int=0) -> List[str]:
 	position = start
 	num = ""
-	#print(md_string)
 	for char in md_string:
 		if  47 < ord(char) < 58: # If number 0-9
 			num += char
 			is_deletion = False
 		else:
-			#print("curposition:", position, "operation", num, char)
-			#print(''.join(output))
-			#print(''.join([str(i%10) for i in range(len(output))]))
-			#print(f"{' '*position}^")
-			if num != "":
-				#print(position, position + int(num))
+			if num != '':
 				end = position + int(num)
 				for i in range(position, end):
 					output[i] = '|'
@@ -259,9 +180,7 @@ def incorporate_mismatches_deletions(md_string: str, output: List[str], start: i
 				output[position] = ' '
 				position += 1
 			num = ""
-		#print(num, position)
-	if num != "":
-		#print(position, position + int(num))
+	if num != '':
 		for i in range(position, position + int(num)):
 			output[i] = '|'
 	return output
@@ -283,12 +202,7 @@ def visualize_alignment(alignment: AlignedSegment) -> str:
 		if  47 < ord(char) < 58: # If number 0-9
 			num += char
 		else:
-			#print("curposition:", position, "operation", num, char, "nextpos:", position + int(num))
-			#print(''.join(output))
-			#print(''.join([str(i%10) for i in range(len(output))]))
-			#print(f"{' '*position}^")
 			if char == 'S':
-				#print(position, position + int(num))
 				for i in range(position, position + int(num)):
 					output[i] = '-'
 			elif char == 'M' and not read_M:
@@ -298,8 +212,7 @@ def visualize_alignment(alignment: AlignedSegment) -> str:
 				for i in range(position, position + int(num)):
 					output[i] = 'I'
 			position += int(num)
-			num = ""
-			
+			num = ""	
 	return ''.join(output)
 
 def visualize_aminoacids(sequence: Seq) -> str:
@@ -307,5 +220,3 @@ def visualize_aminoacids(sequence: Seq) -> str:
 	for i in range(len(sequence)):
 		output[i*3] = sequence[i]
 	return ''.join(output)
-
-		

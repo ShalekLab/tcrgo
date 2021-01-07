@@ -1,4 +1,5 @@
 from Bio.Seq import Seq
+from Bio.Data.CodonTable import TranslationError
 from typing import Union, Tuple, List
 from collections import defaultdict
 import tcrgo.bio as bio
@@ -32,14 +33,6 @@ class Transcript(object):
 		return bio.find_all(
 			self.seq_aa, 'F', self.V_end_aa, self.J_start_aa + 14
 		)
-	
-	'''
-	def has_positions(self, frame_positions: Tuple[List[int], ...]) -> bool:
-		for frame in frame_positions:
-			if frame:
-				return True
-		return False
-	'''
 
 class CDR3(object):
 	
@@ -55,7 +48,10 @@ class CDR3(object):
 	def get_translation(self):
 		if self.end - self.start >= 2:
 			end_translation = len(self.seq_nt) - len(self.seq_nt) % 3
-			self.seq_aa = self.seq_nt[:end_translation].translate()
+			try:
+				self.seq_aa = self.seq_nt[:end_translation].translate()
+			except TranslationError:
+				self.seq_aa = None
 
 	def is_in_frame(self):
 		return self.start % 3 == (self.end - 2) % 3

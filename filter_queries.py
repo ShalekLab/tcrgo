@@ -4,10 +4,10 @@ It is meant to filter reads down to only those which have V and J alignments.
 Run using python -m filter_queries <args>
 
 Requirements:
-	Python 3.8.5, samtools, pysam 
+	Python >3.8.5, samtools, pysam, biopython, pandas
 """
 import argparse
-import os.path as osp
+import os.path
 from textwrap import dedent, indent
 
 from typing import List, Dict, Iterator, Set
@@ -16,9 +16,7 @@ from pathlib import Path
 from tcrgo.bam import BAMDict
 import tcrgo.io as io
 from tcrgo import Log
-log = Log(name=__name__)
-
-# TODO: Seems like there ARE standard tags for cell barcode/UMI. CR and OX/MI
+log = Log("root")
 
 def main(args):
 
@@ -37,7 +35,7 @@ def main(args):
 	#		Maybe could use pysam.PileUpColumn/PileUp for this?
 	
 	log.info("Writing all (partially) mapped queries not containing V and J alignments to file.")
-	io.output_nonVJ(queries_nonVJ, args.output_path)
+	io.output_queries(queries_nonVJ, os.path.join(args.output_path, "queries_nonVJ.tsv"))
 	log.info(f"Filtering out UMIs with VJ below {args.minimum_reads} reads and randomly "
 			f"subsampling those with reads exceeding {args.maximum_reads} reads.")
 	log.info(f"Will be writing filtered queries containing V and J to {args.workers} file(s).")
@@ -46,7 +44,6 @@ def main(args):
 	log.success("Done!")
 
 if __name__ == "__main__":
-
 	parser = argparse.ArgumentParser(
 		prog="python -m filter_queries", # Would be good to make a command-line alias and set that here
 		usage="",
@@ -75,7 +72,6 @@ if __name__ == "__main__":
 			"Path to single-end tagged, trimmed, aligned, repaired BAM. IMPORTANT: "
 			"It is strongly recommended you use the alignment script to create this BAM."
 	)
-
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(
 		'-v', "--verbosity", 

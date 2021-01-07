@@ -5,7 +5,7 @@ and summarize the information
 Run using python -m summary <args>
 
 Requirements:
-	Python 3.8.5, samtools, pysam, pandas
+	Python >3.8.5, samtools, pysam, biopython, pandas
 """
 import argparse
 from pathlib import Path
@@ -13,7 +13,7 @@ import tcrgo.io as io
 from textwrap import dedent, indent
 
 from tcrgo import Log
-log = Log(name=__name__)
+log = Log('root')
 
 def main(args):
 	log.init(args.verbosity)
@@ -27,11 +27,12 @@ def main(args):
 			worker_range = range(worker_range[0], worker_range[-1]+1)
 		else:
 			worker_range = range(1, worker_range[-1]+1)
-
+	
 	aggregated_cdr3_info = io.read_cdr3_info(worker_range, args.input_path, args.string_index)
 	io.write_dataframe(aggregated_cdr3_info, args.output_path, "aggregated_cdr3_info.tsv")
 	aggregated_tiebreaks_alignments = io.read_tiebreaks_alignments(worker_range, args.input_path)
 	io.write_dataframe(aggregated_tiebreaks_alignments, args.output_path, "aggregated_tiebreaks_alignments.tsv")
+	log.success("DONE")
 
 if __name__ == "__main__":
 
@@ -59,10 +60,11 @@ if __name__ == "__main__":
 	parser.add_argument(
 		"workers",
 		type=str,
-		metavar="<NUMWORKERS or NUMFIRST:NUMLAST>",
+		metavar="<'ALL' or NUMWORKERS or NUMFIRST:NUMLAST>",
 		help=
-			"The number or range [NUMFIRST, NUMLAST] of reconstruct_tcrs text "
-			"files to be concatenated for summary. NUMFIRST must be > 0."
+			"The number or range [NUMFIRST, NUMLAST] of recover_cdr3s text "
+			"files to be concatenated for summary. NUMFIRST must be > 0. ALL "
+			"will automatically detect all files in the input directory."
 	)
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(

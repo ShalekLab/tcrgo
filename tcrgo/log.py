@@ -8,8 +8,8 @@ class Formatter(logging.Formatter):
 	debug_fmt  = "%(asctime)s - VERBOSE: %(msg)s"
 	info_fmt = "%(asctime)s - INFO: %(msg)s"
 	warning_fmt = "%(asctime)s - WARNING! %(msg)s"
-	error_fmt  = "%(asctime)s - %(name)s: ERROR! %(msg)s" # (DEV: %(module)s, line %(lineno)d)
-	critical_fmt = "%(asctime)s - %(name)s: SUCCESS! %(msg)s"
+	error_fmt  = "%(asctime)s - ERROR! %(msg)s"
+	critical_fmt = "%(asctime)s - SUCCESS! %(msg)s"
 
 	def __init__(self, fmt="%(levelno)d: %(msg)s", datefmt="%H:%M:%S, %Y-%m-%d"):
 		super().__init__(fmt=fmt, datefmt=datefmt, style='%')  
@@ -40,26 +40,12 @@ class Formatter(logging.Formatter):
 		return result
 
 class Log(object):
-
-	def __init__(self, name=__name__, script_name="SEQWELL-TCR"):
+	def __init__(self, name=__name__, script_name="SEQWELL-TCR", level=logging.DEBUG):
 		self.name = name
 		self.script_name = script_name
 		self.logger = logging.getLogger(name)
-
-		# Create console handler and set level to debug
-		handler = logging.StreamHandler()
-		self.handler = handler
-		handler.setLevel(logging.DEBUG)
-
-		# Create formatter
-		formatter = Formatter()
-		self.formatter = formatter
-
-		# Add formatter to handler
-		handler.setFormatter(formatter)
-		# Add handler to logger
-		self.logger.addHandler(handler)
-		self.logger.setLevel(logging.DEBUG)
+		self.handler = None
+		self.formatter = None
 
 	def info(self, msg):
 		self.logger.info(msg)
@@ -70,8 +56,6 @@ class Log(object):
 	def warn(self, msg, indent=0):
 		self.logger.warning(f"{'	'*indent}{msg}")
 
-	# TODO: Seems like ERROR messages reference self.logger.error line...
-	# Is there a way to fix this?
 	def error(self, msg):
 		self.logger.error(msg)
 		sys.exit(1)
@@ -107,36 +91,45 @@ class Log(object):
 		self.info(str(character*width))
 		Formatter.info_fmt = format_original
 	
-	def set_level(self, level="NOTSET"):
+	def get_level_code(self, level: str="NOTSET") -> int:
 		if level == "NOTSET":
-			level = logging.NOTSET
+			return logging.NOTSET
 		elif level == "INFO":
-			level = logging.INFO
+			return logging.INFO
 		elif level in ("VERBOSE", "DEBUG"):
-			level = logging.DEBUG
+			return logging.DEBUG
 		elif level == "WARNING":
-			level = logging.WARNING
+			return logging.WARNING
 		elif level in ("SUCCESS", "CRITICAL"):
-			level = logging.CRITICAL
+			return logging.CRITICAL
 		elif level == "ERROR":
-			level = logging.ERROR
+			return logging.ERROR
 		else:
 			raise Exception("Invalid logger level.")
-		self.logger.setLevel(level)
-		self.handler.setLevel(level)
 
-	def init(self, level="NOTSET"):
+	def init(self, level: str="NOTSET"):
+		level_code = self.get_level_code(level)
+		# Create console handler and set level todebug
+		handler = logging.StreamHandler()
+		handler.setLevel(level_code)
+		self.handler = handler
+
+		# Create formatter
+		formatter = Formatter()
+		self.formatter = formatter
+
+		# Add formatter to handler
+		self.handler.setFormatter(formatter)
+		# Add handler to logger
+		self.logger.addHandler(handler)
+		self.logger.setLevel(level_code)
+		
 		self.sep('=')
 		format_original = Formatter.info_fmt
-		Formatter.info_fmt = "%(asctime)s - "+self.script_name+": %(msg)s"
+		Formatter.info_fmt = "%(asctime)s - " + self.script_name + ": %(msg)s"
 		self.logger.info(f"Initialized logger, ready for {self.script_name}.")
-		self.set_level(level)
 		Formatter.info_fmt = format_original
 		self.formatter.datefmt = "%H:%M:%S"
-
-	def proceed(self, level="NOTSET"):
-		self.formatter.datefmt = "%H:%M:%S"
-		#self.set_level(level)
 
 	def close(self):
 		self.sep('=')

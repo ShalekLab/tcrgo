@@ -5,18 +5,15 @@ from collections import Counter, deque, defaultdict
 import pandas as pd
 import pysam
 from .dropseq_tools import fastq_to_bam
+from typing import List, Tuple, Dict, Set, DefaultDict, Deque, Iterable
 from .log import Log
 
+log = Log("root")
 BAM = pysam.libcalignmentfile.AlignmentFile
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
 DataFrame = pd.core.frame.DataFrame
-from pathlib import Path
-from typing import List, Tuple, Dict, Set, DefaultDict, Deque
 
-log = Log(name=__name__)
-log.proceed()
-
-def sort_and_index(bam: Path, output_path: str) -> Path:
+def sort_and_index(bam: str, output_path: str) -> str:
 	"""
 	Given a path to a BAM, sort the BAM if filename does not end with 'sorted.bam'.
 	Output to sorted BAM to output_path and generate a BAM index (.bai) if it does not exist
@@ -59,14 +56,13 @@ def is_bam(data: List[str]) -> bool:
 	else:
 		log.error("Please either input one '.bam' path or two '.fastq.gz'/'.fastq' paths.")
 
-def parse_data(data: List[Path], output_path: Path) -> BAM:
+def parse_data(data: List[str], output_path: str) -> BAM:
 	"""
 	Read the inputted path(s) to the single-end BAM or paired-end FASTQS
 	and determine the file type. Convert FASTQ to BAM if necessary and
 	ultimately sort and index the BAM.
 	"""
-	is_bam = determine_data_filetype(data)
-	if is_bam:
+	if is_bam(data):
 		bam = data[0]
 	else:
 		log.error("Please run the alignment script to convert paired end FASTQs to an aligned BAM.")
@@ -78,7 +74,7 @@ def parse_queries(bam: BAM, barcode_tag: str="CR", umi_tag: str="RX") -> Tuple[S
 	"""
 	Parses BAM line by line and finds intersection of queries containing V 
 	and queries containing J. Stores these queries as
-	'Barcode_seq|UMI_seq|QNAME'
+	(Barcode_seq, UMI_seq, QNAME)'
 	"""
 	queries_V = set()
 	queries_J = set()
@@ -88,7 +84,7 @@ def parse_queries(bam: BAM, barcode_tag: str="CR", umi_tag: str="RX") -> Tuple[S
 	for alignment in bam: # .fetch():
 		barcode = alignment.get_tag(barcode_tag)
 		umi = alignment.get_tag(umi_tag)
-		id_query = f"{barcode}|{umi}|{alignment.query_name}"
+		id_query = (barcode, umi, alignment.query_name)
 		queries_all.add(id_query)
 		if alignment.is_unmapped:
 			count_unmapped += 1
@@ -101,8 +97,8 @@ def parse_queries(bam: BAM, barcode_tag: str="CR", umi_tag: str="RX") -> Tuple[S
 				queries_V.add(id_query)
 		elif "TRAJ" in alignment.reference_name or "TRBJ" in alignment.reference_name:
 			queries_J.add(id_query)
-	log.info(f"Found and ignored {count_unmapped} unmapped reads "
-		f"and {count_reverse} reverse mapped reads.")
+	log.info(f"Found and ignored {count_unmapped} unmapped alignments "
+		f"and {count_reverse} reverse-mapped alignments.")
 	queries_VJ = queries_V & queries_J
 	queries_VnotJ = queries_V - queries_J
 	queries_JnotV = queries_J - queries_V
@@ -112,11 +108,12 @@ def parse_queries(bam: BAM, barcode_tag: str="CR", umi_tag: str="RX") -> Tuple[S
 	return queries_VJ, queries_nonVJ
 
 def filter_queries(queries_VJ: Set[str], num_queries_min: int, \
-	num_queries_max: int, seed: int=2020) -> DefaultDict[str, List[str]]:
-	""" """
+	num_queries_max: int, seed: int=2020) \
+	-> DefaultDict[Tuple[str, str], List[Tuple[str, str, str]]]:
+	"""Group queries by BC-UMI combination and apply min and max filters"""
 	id_queries = defaultdict(list)
 	for id_query in queries_VJ:
-		barcode_umi = '|'.join(id_query.split('|')[:2])
+		barcode_umi = id_query[:2]
 		id_queries[barcode_umi].append(id_query)
 	ids_to_drop = list()
 	random.seed(seed)
@@ -131,48 +128,61 @@ def filter_queries(queries_VJ: Set[str], num_queries_min: int, \
 		del id_queries[barcode_umi]
 	return id_queries
 
-def get_partition_queries(w: int, workers:int, max_size: int, \
-	id_queries: DefaultDict[str, List[str]], ids_sorted: Deque[str], \
-	id_querycounts: Dict[str, int]) -> List[str]:
+def get_partition_queries(w: int, workers: int, max_size: int,
+	id_queries: DefaultDict[Tuple[str, str], List[Tuple[str, str, str]]],
+	ids_sorted: Deque[Tuple[str, str]],
+	id_querycounts: Dict[Tuple[str, str], int]) -> List[str]:
 	"""
 	Divy up VJ queries as evenly as possible into w files for processing
 	by multiple instances of the CDR3 recovery part of the pipeline.
+	If I could redo this method I would have it take the deque and a
+	DefaultDict[Tuple[str,str], Counter[Tuple[str,str,str], int]] instead.
 	"""
 	LEFT = 0 # Index of current maximum in ids_sorted
 	RIGHT = -1 # Index of current minimum in ids_sorted
-	to_write = list()
+	queries = list()
 	count = 0
 	# TODO: Consider adding: `or # remaining reads < max_size/10`
 	if w == workers - 1: # If the last file, just write whatever remains.
 		while ids_sorted:
 			count += id_querycounts[ids_sorted[LEFT]]
-			to_write += id_queries[ids_sorted[LEFT]]
+			queries += id_queries[ids_sorted[LEFT]]
 			ids_sorted.popleft()
 	elif id_querycounts[ids_sorted[LEFT]] >= max_size:
-		log.info(f"Sole Barcode|UMI {ids_sorted[LEFT]} of {id_querycounts[ids_sorted[LEFT]]} "
+		log.info(f"Sole Barcode-UMI {ids_sorted[LEFT]} of {id_querycounts[ids_sorted[LEFT]]} "
 				f"unique reads exceeds max partition size {max_size}.")
 		log.warn("Be aware that fewer files may be outputted as a result!")
 		count += id_querycounts[ids_sorted[LEFT]]
-		to_write += id_queries[ids_sorted[LEFT]]
+		queries += id_queries[ids_sorted[LEFT]]
 		ids_sorted.popleft()
 	else: # current max doesn't below max_size, fill remainder
 		while ids_sorted:
 			if id_querycounts[ids_sorted[LEFT]] <= max_size - count:
 				count += id_querycounts[ids_sorted[LEFT]]
-				to_write += id_queries[ids_sorted[LEFT]]
+				queries += id_queries[ids_sorted[LEFT]]
 				ids_sorted.popleft()
 			elif id_querycounts[ids_sorted[RIGHT]] <= max_size - count:
 				count += id_querycounts[ids_sorted[RIGHT]]
-				to_write += id_queries[ids_sorted[RIGHT]]
+				queries += id_queries[ids_sorted[RIGHT]]
 				ids_sorted.pop()
 			else: # No more UMIs can fit into max_size
 				break
-	return to_write
+	return queries
+
+def output_queries(id_queries: Iterable[Tuple[str, str, str]], output_file: str):
+	if os.path.isfile(output_file):
+		log.warn(f"Deleting pre-existing {output_file}")
+		os.remove(output_file)
+	with open(output_file, 'w') as query_file:
+		for id_query in id_queries:
+			query_file.write('\t'.join(id_query) + '\n')
 
 # TODO: consider compressing these files. They can be tens/hundreds of MB
 @log.time
-def output_grouped_VJ_queries(id_queries: DefaultDict[str, List[str]], workers: int, output_path: Path):
-	id_querycounts = {k:len(v) for k,v in id_queries.items()} # Convert each value from list to len(list)
+def output_grouped_VJ_queries(id_queries: DefaultDict[Tuple[str, str], List[Tuple[str, str, str]]],
+	workers: int, output_path: str):
+	""" """
+	id_querycounts = {k:len(v) for k,v in id_queries.items()} # Convert each value from list to len(value)
 	ids_sorted = deque([k for k,v in sorted(id_querycounts.items(), key=lambda item: item[1], reverse=True)]) # Sort keys in descending order
 	
 	num_queries = sum(id_querycounts.values())
@@ -180,41 +190,31 @@ def output_grouped_VJ_queries(id_queries: DefaultDict[str, List[str]], workers: 
 	remainder = num_queries % partition_size
 	max_size = partition_size + remainder
 	log.info(f"Distributing {num_queries} queries belonging to {len(ids_sorted)} "
-			f"Barcode-UMI pairs somewhat evenly across {workers} file(s).")
+			f"Barcode-UMI pairs somewhat evenly across {workers} file(s)...")
 	log.sep('-', width=50)
-
 	for w in range(workers):	
-		queries_filename = os.path.join(output_path, f"queries{w+1}.txt")
 		if not ids_sorted:
-			log.warn(f"No reads remain, not writing file '{queries_filename}'!")
-			continue
-		if os.path.isfile(queries_filename):
-			log.warn(f"Deleting aleady-existing {queries_filename}")
-			os.remove(queries_filename)
-		to_write = get_partition_queries(w, workers, max_size, id_queries, ids_sorted, id_querycounts)
-		with open(queries_filename, 'w') as query_list:
-			query_list.write('\n'.join(to_write)+'\n')
-		log.info(f"Wrote {len(to_write)} unique reads to file {w+1}")
+			log.warn(f"No reads remain, not writing further files.")
+			break
+		queries = get_partition_queries(w, workers, max_size, id_queries, ids_sorted, id_querycounts)
+		filename = f"queries{w+1}.tsv"
+		output_queries(queries, os.path.join(output_path, filename))
+		log.info(f"Wrote {len(queries)} unique reads to {filename}.")
 		log.sep("-", width=50)
 	if ids_sorted:
 		log.error(f"Ended with {len(ids_sorted)} still left!")
 
-def output_nonVJ(queries_nonVJ: Set[str], output_path: Path):
-	filename = os.path.join(output_path, f"queries_nonVJ.txt")
-	with open(filename, 'w') as nonVJ_file:
-		nonVJ_file.write('\n'.join(queries_nonVJ)+'\n')
-
-def read_id_queries(output_path: Path, worker: int) -> List[str]:
-	queries_filename = os.path.join(output_path, f"queries{worker}.txt")
+def read_queries(queries_filename: str) -> List[Tuple[str, str, str]]:
 	log.info(f"Reading {queries_filename}.")
-	return open(queries_filename, 'r').read().splitlines()
-
-def read_query_list(query_list: str) -> List[str]:
-	log.info(f"Reading {query_list}.")
-	return open(query_list, 'r').read().splitlines()
+	id_queries = open(queries_filename, 'r').read().splitlines()
+	return [id_query.split('\t') for id_query in id_queries]
 
 def get_worker_id(query_list: str) -> int:
-	return int(os.path.basename(query_list).replace("queries", '').replace(".txt", ''))
+	return int(
+		os.path.basename(query_list) \
+			.replace("queries", '') \
+			.replace(".tsv", '')
+	)
 
 def parse_fasta(fasta: str) -> List[Tuple[str, str]]:
 	entries = list()
@@ -244,7 +244,15 @@ def list_cdr3_files(input_directory: str) -> List[int]:
 		worker_ids.append(int(w))
 	return sorted(worker_ids)
 
-def read_cdr3_info(workers, input_path: Path, string_index: bool=False) -> DataFrame:
+def read_cdr3_info(workers: Iterable[int], input_path: str,
+	string_index: bool=False) -> DataFrame:
+	"""
+	Read the CDR3 info files for the range of workers, concat into dataframe,
+	then sort alphabetically by BC and UMI.
+	By default, will add numerical indices to the dataframe for BC and UMI.
+	If string_index: no numerical indices added but BC repeats are replaced
+	with blank cells to make reading by BC easier.
+	"""
 	for w in workers:
 		cdr3_info_filename = os.path.join(input_path, f"cdr3_info{w}.tsv")
 		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0, index_col=["BC", "UMI"])
@@ -271,7 +279,7 @@ def read_cdr3_info(workers, input_path: Path, string_index: bool=False) -> DataF
 		df.insert(0, "BC_index", bc_index)	
 	return df
 
-def read_tiebreaks_alignments(workers, input_path: Path) -> DataFrame:
+def read_tiebreaks_alignments(workers, input_path: str) -> DataFrame:
 	for w in workers:
 		tiebreaks_alignments = os.path.join(input_path, f"tiebreaks_alignments{w}.tsv")
 		w_tiebreaks_alignments = pd.read_csv(tiebreaks_alignments, sep='\t', header=0)
@@ -285,7 +293,7 @@ def read_tiebreaks_alignments(workers, input_path: Path) -> DataFrame:
 	df = df.sort_values(["Winner", "Loser", "Method"])
 	return df
 
-def write_dataframe(df: DataFrame, output_path: Path, filename: str):
+def write_dataframe(df: DataFrame, output_path: str, filename: str):
 	filename_path = os.path.join(output_path, filename)
 	log.info(f"Writing aggregated dataframe to file {filename_path}.")
 	if not os.path.exists(output_path):
@@ -295,19 +303,3 @@ def write_dataframe(df: DataFrame, output_path: Path, filename: str):
 		os.remove(filename_path)
 	df.to_csv(filename_path, sep='\t', header=True, index=False)
 	log.info(f"Wrote {filename_path}")
-
-###################################################################################
-#	Deprecated
-###################################################################################
-
-def output_queries(queries: Set[str], output_path: Path, workers: int):
-	queries = list(queries)
-	p = len(queries) // workers # partition size
-	r = len(queries) % p # remainder
-	for i in range(workers):
-		queries_filename = os.path.join(output_path, f"queries{i+1}.txt")
-		if os.path.isfile(queries_filename):
-			log.warn(f"Deleting aleady-existing {queries_filename}")
-			os.remove(queries_filename)
-		with open(queries_filename, 'w') as query_list:
-			query_list.write('\n'.join(queries[i*p + min(i, r) : (i+1)*p + min(i+1, r)]))
