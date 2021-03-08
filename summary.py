@@ -1,6 +1,6 @@
 """
-This is the third script of the python pipeline. 
-It is meant to aggregate the results from each reconstruct_tcrs worker
+This is the third and final script of the python pipeline. 
+It is meant to aggregate the results from each recover_cdr3s worker
 and summarize the information
 Run using python -m summary <args>
 
@@ -8,9 +8,10 @@ Requirements:
 	Python >3.8.5, samtools, pysam, biopython, pandas
 """
 import argparse
-from pathlib import Path
-import tcrgo.io as io
 from textwrap import dedent, indent
+import os
+import tcrgo.io as io
+from tcrgo.collapse import collapse
 
 from tcrgo import Log
 log = Log('root')
@@ -28,10 +29,25 @@ def main(args):
 		else:
 			worker_range = range(1, worker_range[-1]+1)
 	
-	aggregated_cdr3_info = io.read_cdr3_info(worker_range, args.input_path, args.string_index)
+	log.info("Aggregating CDR3 info files outputted from the recover_cdr3s script.")
+	aggregated_cdr3_info = io.read_cdr3_info(worker_range, args.input_path)
+	aggregated_cdr3_info = io.sort_and_index_dataframe(aggregated_cdr3_info, args.string_index)
 	io.write_dataframe(aggregated_cdr3_info, args.output_path, "aggregated_cdr3_info.tsv")
-	aggregated_tiebreaks_alignments = io.read_tiebreaks_alignments(worker_range, args.input_path)
-	io.write_dataframe(aggregated_tiebreaks_alignments, args.output_path, "aggregated_tiebreaks_alignments.tsv")
+
+	if args.collapse:
+		log.info("Collapsing aggregated CDR3 info, this may take a long time.")
+		outdir = os.path.join(args.output_path, "dgraphs")
+		if args.plot:
+			log.info(f"Plots for each topVJ combination will be plotted to {outdir}")
+			if not os.path.isdir(outdir):
+				os.makedirs(outdir)
+		collapsed_cdr3_info = collapse(aggregated_cdr3_info, args.threshold, args.plot, outdir)
+		collapsed_cdr3_info = io.sort_and_index_dataframe(collapsed_cdr3_info, args.string_index)
+		io.write_dataframe(collapsed_cdr3_info, args.output_path, "aggrcollapsed_cdr3_info.tsv")
+
+	log.info("Aggregating tie break information outputted from the recover_cdr3s script.")
+	aggr_tiebreaks_alignments = io.read_tiebreaks_alignments(worker_range, args.input_path)
+	io.write_dataframe(aggr_tiebreaks_alignments, args.output_path, "aggregated_tiebreaks_alignments.tsv")
 	log.success("DONE")
 
 if __name__ == "__main__":
@@ -82,15 +98,45 @@ if __name__ == "__main__":
 			"as the indices instead of numbering them for easier reading (default: %(default)s)."
 	)
 	parser.add_argument(
+		'-c', "--collapse", 
+		action="store_true",
+		help=
+			"Perform BCUMI collapsing. BCUMIs are first binned by topVJ combination, then "
+			"subgrouped by greater/equal to threshold (collapsers) vs. less than threshold "
+			"(collapsees). For each collapser BCUMI, hamming distance comparisons are done "
+			"with each collapsee BCUMI. If HD == 1, then CDR3 sequences of equal lengths "
+			"are compared. If HD <= 1, then collapsees are collapsed into the collapser "
+			"with the highest number of reads (or number of edges if there is a tie)."
+			"aggrcollapsed_cdr3_info.tsv is created (default: %(default)s)."
+	)
+	parser.add_argument(
+		'-p', "--plot", 
+		action="store_true",
+		help=
+			"If BCUMI collapsing, plot Collapsers-Collapsees graphs for each reference combination."
+			"If enabled, expect hundreds of graphs in 'output-path/dgraphs/ with cumulative size "
+			"exceeding 100MB. The program will take longer to finish (default: %(default)s)."
+	)
+	parser.add_argument(
+		'-t', "--threshold",
+		type=int,
+		default=10,
+		help=
+			"When BCUMI collapsing, BCUMIs with greater than or equal to this threshold will be " 
+			"considered collapsers and the rest collapsees. Collapsees are merged into collapsers "
+			"if the collapsing criteria is met. A lower number may result in more collapsing while "
+  			"a higher number may be more strict and result in less collapsing (default: %(default)d)."
+	)
+	parser.add_argument(
 		'-i', "--input-path",
-		type=Path,
+		type=str,
 		default="./out/cdr3/",
-		help="Path to folder containing files outputted by reconstruct_tcrs.py (default: %(default)s)."
+		help="Path to folder containing files outputted by recover_cdr3s.py (default: %(default)s)."
 	)
 	# TODO: change this
 	parser.add_argument(
 		'-o', "--output-path", 
-		type=Path,
+		type=str,
 		default="./out/cdr3/",
 		help="The path to which the files from this program will output (default: %(default)s )."
 	)

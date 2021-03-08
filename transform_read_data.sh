@@ -8,7 +8,7 @@
 
 sequence_data="$1"
 sample="$2"
-output_path="$3"
+output_path="${3%/}/" # Ensure path to dir ends with /
 
 set -euo pipefail
 
@@ -38,6 +38,7 @@ echo Generating ${output_path}${sample}_seqHeaders.txt
 awk 'NR%4==1' "${sequence_data}" \
 	| ggrep -o "^.*#" \
 	> "${output_path}${sample}_seqHeaders.txt" 
+
 echo Generating ${output_path}${sample}_seqHeadersRead1.txt
 sed 's~#~#/1~' "${output_path}${sample}_seqHeaders.txt" > "${output_path}${sample}_seqHeadersRead1.txt"
 

@@ -40,7 +40,7 @@ class Formatter(logging.Formatter):
 		return result
 
 class Log(object):
-	def __init__(self, name=__name__, script_name="SEQWELL-TCR", level=logging.DEBUG):
+	def __init__(self, name=__name__, script_name="TCRGO", level=logging.DEBUG):
 		self.name = name
 		self.script_name = script_name
 		self.logger = logging.getLogger(name)
@@ -86,9 +86,17 @@ class Log(object):
 		return fdoc_wrapper
 
 	def sep(self, character='-', width=80):
+		#if self.logger.level == verbosity
 		format_original = Formatter.info_fmt
 		Formatter.info_fmt = "%(msg)s"
-		self.info(str(character*width))
+		self.info(str(character * width))
+		Formatter.info_fmt = format_original
+
+	# TODO: Use logger.level and verbosity argument to consolidate with sep
+	def vsep(self, character='-', width=80):
+		format_original = Formatter.info_fmt
+		Formatter.info_fmt = "%(msg)s"
+		self.verbose(str(character * width))
 		Formatter.info_fmt = format_original
 	
 	def get_level_code(self, level: str="NOTSET") -> int:

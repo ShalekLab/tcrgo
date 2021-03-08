@@ -7,6 +7,7 @@ import pysam
 from .dropseq_tools import fastq_to_bam
 from typing import List, Tuple, Dict, Set, DefaultDict, Deque, Iterable
 from .log import Log
+import argparse
 
 log = Log("root")
 BAM = pysam.libcalignmentfile.AlignmentFile
@@ -244,26 +245,28 @@ def list_cdr3_files(input_directory: str) -> List[int]:
 		worker_ids.append(int(w))
 	return sorted(worker_ids)
 
-def read_cdr3_info(workers: Iterable[int], input_path: str,
-	string_index: bool=False) -> DataFrame:
-	"""
-	Read the CDR3 info files for the range of workers, concat into dataframe,
-	then sort alphabetically by BC and UMI.
-	By default, will add numerical indices to the dataframe for BC and UMI.
-	If string_index: no numerical indices added but BC repeats are replaced
-	with blank cells to make reading by BC easier.
-	"""
+def read_cdr3_info(workers: Iterable[int], input_path: str) -> DataFrame:
+	"""Read the CDR3 info files for the range of workers, concat into dataframe."""
 	for w in workers:
 		cdr3_info_filename = os.path.join(input_path, f"cdr3_info{w}.tsv")
-		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0, index_col=["BC", "UMI"])
+		w_cdr3_info = pd.read_csv(cdr3_info_filename, sep='\t', header=0)
 		if w == 1:
 			df = w_cdr3_info
 		else:
 			df = pd.concat([df, w_cdr3_info])
-	
-	log.info("Sorting aggregated DataFrame by 'BC' and 'UMI'.")
+	return df
+
+def sort_and_index_dataframe(df: DataFrame, string_index: bool=False) -> DataFrame:
+	"""
+	Sort all rows alphabetically by BC and UMI. Then index numerically or by BC,UMI
+	By default, will add numerical indices to the dataframe for BC and UMI.
+	If string_index: no numerical indices added but BC repeats are replaced
+	with blank cells to make reading by BC easier.
+	"""
+	log.info("Sorting DataFrame by 'BC' and 'UMI'.")
+	df = df.set_index(["BC", "UMI"])
 	df = df.sort_values(["BC", "UMI"])
-	df.drop(["BC_index", "UMI_index"], axis=1, inplace=True)
+	df = df.drop(["BC_index", "UMI_index"], axis=1)
 	if string_index:
 		mask = df.index.get_level_values("BC").to_series().duplicated()
 		df = df.reset_index()
@@ -295,7 +298,7 @@ def read_tiebreaks_alignments(workers, input_path: str) -> DataFrame:
 
 def write_dataframe(df: DataFrame, output_path: str, filename: str):
 	filename_path = os.path.join(output_path, filename)
-	log.info(f"Writing aggregated dataframe to file {filename_path}.")
+	log.info(f"Writing dataframe to file {filename_path}.")
 	if not os.path.exists(output_path):
 		os.makedirs(output_path)
 	if os.path.isfile(filename_path):

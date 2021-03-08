@@ -1,9 +1,11 @@
-"""Alignment and preprocessing via Drop-Seq Tools 2.4.0 and Bowtie2 version 2.4.1"""
+"""
+Alignment and preprocessing via Drop-Seq Tools 2.4.0 and Bowtie2 version 2.4.1
+Requires Samtools and pysam.
+"""
 import tcrgo.dropseq_tools as ds
 import tcrgo.io as io
 import argparse
 from textwrap import dedent, indent
-from pathlib import Path
 import os
 import pysam
 
@@ -12,20 +14,26 @@ log = Log(name=__name__)
 
 def main(args):
 	"""
-	0. Raw BAM -> Single-end FASTQ -> Pair-end FASTQs -> Unmapped BAM  
-	1. Unmapped BAM -> aligned and tagged BAM
-		a. Tag cell barcodes
-		b. Tag molecular barcodes
-		c. Trim 5’ primer sequence
-		d. Trim 3’ polyA sequence
-		e. SAM -> Fastq
-		f. STAR alignment
-		g. Sort STAR alignment in queryname order
-		h. Merge STAR alignment tagged SAM to recover cell/molecular barcodes
-		i. Add gene/exon and other annotation tags
-		j. Barcode Repair
-			i. Repair substitution errors (DetectBeadSubstitutionErrors)
-			ii. Repair indel errors (DetectBeadSynthesisErrors)
+	Note: `<basename>` is inputted using the `--basename BASENAME` argument.
+	0. Input Data -> Unmapped BAM, starting from any of these substeps:
+		a. Raw BAM
+		b. Single-end FASTQ (`<basename>`.fastq)
+		c. Pair-end FASTQs (`<basename>`_R1.fastq,`<basename>`_TCR.fastq)
+	1. Unmapped BAM (`<basename>`_unmapped.bam) -> aligned and tagged BAM
+		a. Tag cell barcodes (`<basename>_celltagged.bam`)
+		b. Tag molecular barcodes (`<basename>_idtagged.bam`)
+		c. Filter out reads with low quality cell/molecular barcodes (`<basename>`_filtered.bam)
+		d. Trim 5’ primer sequence (`<basename>`_adaptertrimmed.bam)
+		e. Trim 3’ polyA sequence (`<basename>`_trimmed.bam)
+		f. SAM -> Fastq (`<basename>`_trimmed.fastq)
+		g. Bowtie2 alignment (`<basename>`_aligned.sam)
+		h. Sort STAR alignment in queryname order (`<basename>`_alignedsorted.bam)
+		i. Merge STAR alignment tagged SAM to recover cell/molecular barcodes (`<basename>`_merged.bam)
+		j. Add gene/exon and other annotation tags (`<basename>`_exontagged.bam)
+		k. Barcode Repair
+			i. Repair substitution errors (`<basename>_synthrepaired.bam`)
+			ii. Repair indel errors (`<basename>`_repaired.bam)
+			iii. Sort by coordinates (`<basename>`_repairedsorted.bam)
 	"""
 	log.init(args.verbosity)
 	log.info("Verifying that Drop-Seq Tools, Picard, and Bowtie2 are all callable...")

@@ -56,6 +56,7 @@ class CDR3(object):
 	def is_in_frame(self):
 		return self.start % 3 == (self.end - 2) % 3
 
+	# DEFUNCT
 	def score_residues(self):
 		if len(self.seq_aa) < 5:
 			return -200

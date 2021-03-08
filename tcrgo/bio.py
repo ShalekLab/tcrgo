@@ -1,10 +1,37 @@
 from Bio.Seq import Seq
-from typing import List, Optional, Tuple, Dict, Set, Any
+from typing import List, Optional, Tuple, Dict, Set, Any, Union
 import pysam
 from collections import Counter, defaultdict
+import numpy as np
+Array = np.ndarray
 AlignedSegment = pysam.libcalignedsegment.AlignedSegment
 
-def levenshtein_distance(sequence1: Seq, sequence2: Seq) -> int:
+# Faster solution. str is faster than Seq
+# https://en.wikibooks.org/wiki/Algorithm_Implementation/Strings/Levenshtein_distance#Python
+def levenshtein_distance(seq1: Union[str, Seq], seq2: Union[str, Seq]):
+	# Potentially flip the problem to ensure the longer sequence is seq1
+	if len(seq1) < len(seq2):
+		return levenshtein_distance(seq2, seq1)
+	# If one of the sequences is 0, return the length of the other (potentially also zero)
+	if len(seq2) == 0:
+		return len(seq1)
+
+	previous_row = range(len(seq2) + 1)
+	for i, c1 in enumerate(seq1):
+		current_row = [i + 1]
+		for j, c2 in enumerate(seq2):
+			# j+1 instead of j since previous_row and current_row are one character longer than seq2
+			insertions = previous_row[j + 1] + 1
+			deletions = current_row[j] + 1
+			substitutions = previous_row[j] + (c1 != c2) # If characters match, no penalty. Branchless?
+			current_row.append(min(insertions, deletions, substitutions))
+		previous_row = current_row
+
+	return previous_row[-1]
+
+# Slightly slower. From Jon Hopkins online course.
+# I found str types to be 30-40% faster than Seq.
+def _OLD_levenshtein_distance(sequence1: Union[str, Seq], sequence2: Union[str, Seq]) -> int:
 	edit_distances = []
 	# Create matrix
 	for i in range(len(sequence1)+1):
@@ -15,19 +42,15 @@ def levenshtein_distance(sequence1: Seq, sequence2: Seq) -> int:
 	# Initialize ED(b, empty string prefix of a) = j
 	for j in range(len(sequence2)+1):
 		edit_distances[0][j] = j
-	for i in range(1, len(sequence1)+1):
-		for j in range(1, len(sequence2)+1):
+	for i, c1 in enumerate(sequence1, start=1):
+		for j, c2 in enumerate(sequence2, start=1):
 			distance_horizontal = edit_distances[i][j-1] + 1 # indel from b to a, penalty +1
 			distance_vertical = edit_distances[i-1][j] + 1 # indel from a to b, penalty +1
-			# substitution at end of a and b
-			if sequence1[i-1] == sequence2[j-1]: # If characters match, no penalty
-				distance_diagonal = edit_distances[i-1][j-1]
-			else: # Characters do not match, penalty +1
-				distance_diagonal = edit_distances[i-1][j-1] + 1
+			distance_diagonal = edit_distances[i-1][j-1] + (c1 != c2)
 			edit_distances[i][j] = min(distance_horizontal, distance_vertical, distance_diagonal)
 	return edit_distances[-1][-1] # Bottom right corner is the overall edit distance
 
-def hamming_distance(sequence1: Seq, sequence2: Seq) -> int:
+def hamming_distance(sequence1: Union[str, Seq], sequence2: Union[str, Seq]) -> int:
 	if len(sequence1) != len(sequence2):
 		raise ValueError("Sequences are not of the same length.")
 	count_mismatches = 0
@@ -35,6 +58,14 @@ def hamming_distance(sequence1: Seq, sequence2: Seq) -> int:
 		if sequence1[i] != sequence2[i]:
 			count_mismatches += 1
 	return count_mismatches
+
+def levenshtein_distance_bcumi(seq1:str, seq2:str) -> bool:
+	# Check if one but not other ends with T. If so, check for 1 deletion.
+	# Else check for 1 ins?
+	# else <= 1 sub.
+	# Find the best order of doing these things.
+	pass
+
 
 def get_frame_translations(sequence_nt: Seq) -> Tuple[Seq, ...]:
 	sequences_aa = [None] * 3

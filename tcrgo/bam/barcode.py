@@ -3,6 +3,7 @@ import textwrap
 from collections import Counter, defaultdict
 from typing import List, Dict, Iterator, Set, Tuple
 from .umi import UMI
+from .read import Read
 from ..log import Log
 
 log = Log("root")
@@ -13,9 +14,11 @@ BAM = pysam.libcalignmentfile.AlignmentFile
 class Barcode(object):
 	def __init__(self, sequence: str):
 		self.sequence = sequence
+		self.num_reads = -1
 		self.umis = {}
 
 	def __len__(self) -> int:
+		'''Number of UMIs.'''
 		return len(self.umis)
 
 	def __getitem__(self, key: str) -> UMI:
@@ -50,3 +53,10 @@ class Barcode(object):
 
 	def get_umis(self) -> List[UMI]:
 		return self._values()
+
+	def get_reads(self) -> List[Read]:
+		reads = []
+		for umi in self.get_umis():
+			reads += umi.get_reads()
+		self.num_reads = len(reads)
+		return reads

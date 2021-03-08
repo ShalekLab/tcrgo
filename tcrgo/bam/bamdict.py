@@ -20,6 +20,16 @@ FASTA = pysam.libcfaidx.FastaFile
 class BAMDict(object):
 	"""
 	BAMDict[Barcode][UMI][Read].alignments
+	
+	BAMDict.barcodes (Dict[str, Barcode])
+	str:Barcode (str is 12nt seq from read's cell barcode tag)
+		Barcode.umis (Dict[str, UMI])
+		str:UMI (str is 8nt seq from read's UMI tag)
+			UMI.reads (Dict[str, Read])
+			str:Read (str is query name of read)
+				Read.alignments (List[AlignedSegments])
+					AlignedSegments are the alignments of different 
+					reference sequences to the read sequence.
 	"""
 	
 	def __init__(self, bam: BAM):
@@ -110,7 +120,26 @@ class BAMDict(object):
 			count += 1
 			if count % report_interval == 0:
 				log.info(f"Stored top alignments for {count} reads ({(count/len(id_queries)):.0%}).")
-		del bam_indexed
+
+	def build_all(self, bam: BAM, cell_tag: str="CR", umi_tag: str="RX"):
+		"""Untested. An approach that will build a complete BAM dictionary."""
+		reads = self.bam.fetch()
+		report_interval = max(1, len(reads) // 25)
+		count = 0
+		for read in reads:
+			barcode = read.get_tag(cell_tag)
+			umi = read.get_tag(umi_tag)
+			qname = read.query_name
+			if barcode not in self:
+				self[barcode] = Barcode(barcode)
+			if umi not in self[barcode]:
+				self[barcode][umi] = UMI(umi)
+			if qname not in self[barcode][umi]:
+				self[barcode][umi][qname] = Read(qname)
+			self[barcode][umi][qname] += read
+			count += 1
+			if count % report_interval == 0:
+				log.info(f"Stored alignments for {count} reads ({(count/len(reads)):.0%}).")
 
 	def write_tiebreaks_alignments(self, w, output_path):
 		ties_aggregated = Counter()
@@ -122,17 +151,6 @@ class BAMDict(object):
 			for case, count in ties_aggregated.items():
 				winner, loser, method = case
 				tiebreaks.write(f"{winner}\t{loser}\t{method}\t{count}\n")		
-
-	'''
-	# TODO: Move to Read file, adjust, and call for each read from reconstruct_tcrs instead
-	@log.time
-	def reconstruct_cdr3s(self, fasta: FASTA, cdr3_positions: Dict[str, int]):
-		for read in self.get_reads():
-			read.get_cdr3_positions(cdr3_positions)
-			read.ref_seq_V = fasta.fetch(read.top_V.reference_name)
-			read.ref_seq_J = fasta.fetch(read.top_J.reference_name)
-			read.get_cdr3_sequence()
-	'''
 
 	@log.time
 	def write_cdr3_info(self, worker: int, output_path: Path):
@@ -155,6 +173,11 @@ class BAMDict(object):
 			for barcode_seq, barcode in self.items():
 				u = 1
 				for umi_seq, umi in barcode.items():
+					if umi.top_cdr3 is None:
+						continue
+					#print(b, u, barcode_seq, umi_seq, len(umi), umi.top_VJ, umi.count_top_VJ, f"{umi.frequency_top_VJ:.3f}")
+					#print('\t\t\t', umi.top_cdr3)
+					#print('\t\t\t', umi.top_cdr3.transcript)
 					cdr3_info.write('\t'.join([str(elem) for elem in \
 						[b, u, barcode_seq, umi_seq, len(umi),
 						umi.top_VJ, umi.count_top_VJ, f"{umi.frequency_top_VJ:.3f}",

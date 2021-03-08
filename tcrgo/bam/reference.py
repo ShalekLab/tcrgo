@@ -3,6 +3,7 @@ from Bio.Seq import Seq
 from itertools import chain, combinations
 import tcrgo.bio as bio
 from ..log import Log
+from ..io import parse_fasta
 
 log = Log("root")
 
@@ -11,13 +12,15 @@ class Reference(object):
 		cdr3_positions: List[int]=None, orf: int=None):
 		self.name = name
 		self.root = self.name.split('-')[0]
-		self.orf = orf
+		self.orf = orf # None for C + J
 		if isinstance(seq_nt, str):
 			self.seq_nt = Seq(seq_nt)
 		else:
 			self.seq_nt = seq_nt
 		self.seq_aa = None
-		self.cdr3_positions = cdr3_positions
+		# I should have made subclasses for V, J, and C, or made all List[int]
+		# would get rid of the problem below and tidy up a lot of this module.
+		self.cdr3_positions = cdr3_positions # int for 'V', ((int?),(int?),(int?)) for 'J'
 		self.is_TRA, self.segment = self.get_identity(name)
 
 	def get_identity(self, name: str) -> Tuple[bool, str]:
@@ -43,6 +46,7 @@ class Reference(object):
 		return has_cdr1
 
 	def identify_best_frame(self):
+		"""If no cdr3 positions file, automatically determine"""
 		if self.segment == 'C':
 			return
 		seqs_aa = bio.get_frame_translations(self.seq_nt)
@@ -59,7 +63,7 @@ class Reference(object):
 					len(self.seq_nt) - (len(self.seq_nt) - self.orf) % 3 - 15
 			else:
 				self.cdr3_positions = min(starts[self.orf])
-			return	
+			return
 		has_start = [len(frame) > 0 for frame in starts]
 		count_has_start = has_start.count(True)
 		if count_has_start == 1:
@@ -80,6 +84,42 @@ class Reference(object):
 		self.orf = frames_best.pop()
 		self.cdr3_positions = min(starts[self.orf])
 
+	def _verify_cdr3_position(self, minimum: int, maximum: int, 
+		boundary: str, is_zero_indexed: bool=True):
+		is_inaccessible = False
+		if self.cdr3_positions < minimum or maximum < self.cdr3_positions:
+			index = "Zero-indexed" if is_zero_indexed else "One-indexed"
+			log.warn(
+				f"{index} CDR3 {boundary} position {self.cdr3_positions} is out of "
+				f"range [{minimum},{maximum}] for {self.name} ({len(self.seq_nt)}nt)",
+				indent=1
+			)
+			is_inaccessible = True
+		if not is_zero_indexed:
+			self.cdr3_positions -= 1
+		self.orf = (self.cdr3_positions + 3) % 3
+		if self.segment == 'J':
+			frames_positions = [[], [], []]
+			frames_positions[self.orf].append(self.cdr3_positions)
+			self.cdr3_positions = tuple([tuple(frame) for frame in frames_positions])
+		return is_inaccessible
+
+	def _verify_cdr3_positions(self, minimum: int, maximum: int, 
+		boundary: str, is_zero_indexed: bool=True):
+		is_inaccessible = False
+		for cdr3_position in self.cdr3_positions:
+			if cdr3_position < minimum or maximum < cdr3_position:
+				index = "Zero-indexed" if is_zero_indexed else "One-indexed"
+				log.warn(
+					f"{index} CDR3 {boundary} position {cdr3_position} is out of "
+					f"range [{minimum},{maximum}] for {self.name} ({len(self.seq_nt)}nt)",
+					indent=1
+				)
+				is_inaccessible = True
+		if not is_zero_indexed:
+			self.cdr3_positions = [cdr3_position - 1 for cdr3_position in self.cdr3_positions]
+		return is_inaccessible
+
 	def verify_cdr3_positions(self, is_zero_indexed: bool=True):
 		if self.segment == 'V':
 			minimum = 1
@@ -94,21 +134,21 @@ class Reference(object):
 		if is_zero_indexed:
 			minimum -= 1
 			maximum -= 1
-		for cdr3_position in self.cdr3_positions:
-			if cdr3_position < minimum or maximum < cdr3_position:
-				index = "Zero-indexed" if is_zero_indexed else "One-indexed"
-				log.warn(
-					f"{index} CDR3 {boundary} position {cdr3_position} is out of "
-					f"range [{minimum},{maximum}] for {self.name} ({len(self.seq_nt)}nt)",
-					indent=1
-				)
-		if not is_zero_indexed:
-			self.cdr3_positions = [cdr3_position-1 for cdr3_position in self.cdr3_positions]
+		if isinstance(self.cdr3_positions, int):
+			is_inaccessible = self._verify_cdr3_position(minimum, maximum, boundary, is_zero_indexed)
+		elif isinstance(self.cdr3_positions, list):
+			is_inaccessible = self._verify_cdr3_positions(minimum, maximum, boundary, is_zero_indexed)
+		else:
+			log.error("self.cdr3_positions must be int or Tuple[int], "
+				f"got type {type(self.cdr3_positions)}.")
+		return is_inaccessible
 
 class ReferenceDict(object):
-	def __init__(self):
+	def __init__(self, fasta: str=None):
 		self.references = dict()
-	
+		if fasta is not None:
+			self.build(parse_fasta(fasta))
+
 	def __len__(self) -> int:
 		return len(self.references)
 
@@ -139,29 +179,45 @@ class ReferenceDict(object):
 	def items(self) -> List[Tuple[str, Reference]]:
 		return self.references.items()
 
+	def __str__(self) -> str:
+		if not self.values():
+			return "Empty"
+		return '\n'.join([ \
+			f"{ref.name} - len {len(ref.seq_nt)} nt, frame {ref.orf}, cdr3pos {ref.cdr3_positions}" \
+				for ref in self.values()
+		])
+
 	def build(self, entries: List[Tuple[str, str]], \
 		cdr3_positions: Dict[str, int]=None, \
 		is_zero_indexed: bool=False) -> Dict[str, Reference]:
 		"""Build a dictionary of References from entries and sequences"""
+		references = dict()
+		count_inaccessible = 0
 		for entry, seq_nt in entries:
 			position = None
 			ref = Reference(entry, seq_nt, position)
 			if ref.segment != 'C':
 				if cdr3_positions is not None:
-					ref.cdr3_position = cdr3_positions[entry]
-					ref.verify_cdr3_positions(is_zero_indexed)
+					ref.cdr3_positions = cdr3_positions[entry]
+					if ref.verify_cdr3_positions(is_zero_indexed):
+						count_inaccessible += 1
 				else:
-					#ref.find_cdr3_position()
 					ref.identify_best_frame()
-			self.references[entry] = ref
-	
+			references[entry] = ref
+		self.references = references
+		if count_inaccessible > 0:
+			log.error(f"{count_inaccessible} out of range positions, see above "
+				"warnings! Use --zero-indexed argument if not one-indexed. "
+				"Or run without --cdr3-positions-file to auto-determine.")
+		return references
+		
 	def verify(self):
 		"""Ensure no duplicate entries, warn of V segment ambiguity"""
 		for ref1, ref2 in combinations(list(self.references.values()), 2):
 			if ref1.name == ref2.name:
 				log.error(f"{ref1.name} and {ref2.name} have same entry name!")
 			if ref1.seq_nt == ref2.seq_nt:
-				log.error(f"{ref1.name} and {ref2.name} have same seq!")
+				log.error(f"{ref1.name} and {ref2.name} have same sequence!")
 			if ref1.segment == 'V' and ref2.segment == 'V' and ref1.is_TRA == ref2.is_TRA:
 				try:
 					distance = bio.hamming_distance(ref1.seq_nt[-90:], ref2.seq_nt[-90:])

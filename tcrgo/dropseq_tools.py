@@ -8,6 +8,7 @@ from textwrap import dedent
 import math
 from typing import List, Tuple, Dict
 from tcrgo.log import Log
+import re
 
 log = Log("root")
 
@@ -31,6 +32,7 @@ def test_tools(dropseq_jar: str, picard_jar: str, aligner: str):
 	if aligner == "bowtie2":
 		execute("bowtie2 --version")
 	elif aligner == "star":
+		log.warn("STAR alignment may not function as intended.")
 		execute("star --version")
 	elif aligner == "bwa":
 		log.error("BWA is currently unsupported.")
@@ -40,10 +42,37 @@ def bam2fq(bam: str, fastq: str) -> str:
 	execute(command)
 	return fastq
 
-def transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: str, fastq_biological: str, output_path: str) -> Tuple[str, str]:
+# TODO: Delete
+def _OLD_transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: str, fastq_biological: str, output_path: str) -> Tuple[str, str]:
 	execute("chmod +x transform_read_data.sh")
 	command = f"./transform_read_data.sh {fastq_singleend} {sample_name} {output_path}"
 	execute(command)
+	return fastq_barcode, fastq_biological
+
+def transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: str,
+	fastq_biological: str, output_path: str) -> Tuple[str, str]:
+	"""Based on the original Bash script, `transform_read_data.sh`."""
+	table = str.maketrans("ACTG", "TGAC") # {65: 84, 67: 71, 84: 65, 71: 67}
+	with pysam.FastxFile(fastq_singleend) as fq, \
+		open(fastq_barcode, 'w') as r1, \
+		open(fastq_biological, 'w') as tcr:
+		for entry in fq:
+			qname, trailing = entry.name.split('#')
+			qname1 = qname + "#/1\n"
+			qname2 = qname + "#/2\n"
+			r1.write('@' + qname1)
+			tcr.write('@' + qname2)
+
+			ids = re.search(r"[AGCTN]*", trailing)[0]
+			r1.write(ids + '\n')
+			revcomp = entry.sequence.translate(table)[::-1] # 5'-3' cDNA => 3'->5' RNA
+			tcr.write(revcomp + '\n')
+
+			r1.write('+' + qname1)
+			tcr.write('+' + qname2)
+
+			r1.write('@'*len(ids) + '\n')
+			tcr.write(entry.quality + '\n')
 	return fastq_barcode, fastq_biological
 
 def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam_unmapped: str, sample_name: str) -> str:
@@ -82,14 +111,14 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 		TagBamWithReadSequenceExtended VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_untagged} \
 			OUTPUT={bam_celltagged} \
-			BARCODE_QUALITY_TAG=CY \
 			SUMMARY={summary_tagged_cellular} \
 			BASE_RANGE=1-12 \
-			BASE_QUALITY=10 \
 			BARCODED_READ=1 \
 			DISCARD_READ=false \
-			TAG_NAME=CR \
+			BASE_QUALITY=10 \
 			NUM_BASES_BELOW_QUALITY=1 \
+			TAG_NAME=CR \
+			BARCODE_QUALITY_TAG=CY \
 			USE_JDK_DEFLATER=true \
 			USE_JDK_INFLATER=true
 		"""
@@ -102,14 +131,14 @@ def tag_identifiers_bam(dropseq_jar: str, bam_untagged: str, bam_idtagged: str) 
 			TagBamWithReadSequenceExtended VALIDATION_STRINGENCY=SILENT \
 			INPUT={bam_celltagged} \
 			OUTPUT={bam_idtagged} \
-			BARCODE_QUALITY_TAG=QX \
 			SUMMARY={summary_tagged_molecular} \
 			BASE_RANGE=13-20 \
-			BASE_QUALITY=10 \
 			BARCODED_READ=1 \
 			DISCARD_READ=true \
-			TAG_NAME=RX \
+			BASE_QUALITY=10 \
 			NUM_BASES_BELOW_QUALITY=1 \
+			TAG_NAME=RX \
+			BARCODE_QUALITY_TAG=QX \
 			USE_JDK_DEFLATER=true \
 			USE_JDK_INFLATER=true
 		"""
@@ -236,6 +265,7 @@ def sam_to_fastq(picard_jar: str, bam: str, fastq: str) -> str:
 	execute(command)
 	return fastq
 
+# Unused
 def bwa(fastq_trimmed: str, fasta: str, sam_aligned: str) -> str:
 	command = f"bwa index {fasta}"
 	execute(command)
@@ -243,6 +273,7 @@ def bwa(fastq_trimmed: str, fasta: str, sam_aligned: str) -> str:
 	execute(command)
 	return sam_aligned
 
+# I don't recall whether I got this to work or not.
 def star(fastq_trimmed: str, fasta: str, basename: str, sam_aligned: str) -> str:
 	path = os.path.dirname(fasta)
 	ref_path = os.path.join(path, "ref")

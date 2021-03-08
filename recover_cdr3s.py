@@ -29,6 +29,7 @@ def main(args):
 	cdr3_positions = None
 	if args.cdr3_positions_file is not None:
 		cdr3_positions = io.read_cdr3_positions(args.cdr3_positions_file)
+	log.verbose(f"{cdr3_positions}")
 	entries = io.parse_fasta(args.fasta)
 	refdict = ReferenceDict()
 	refdict.build(entries, cdr3_positions, args.zero_indexed)
@@ -46,7 +47,7 @@ def main(args):
 	bamdict = BAMDict(bam)
 	log.info("Finding the top V and J alignments for each query")
 	# TODO: Consider splitting fully-mapped V/J reads and partially-mapped V/J reads into different camps
-	# Perform de Bruijn graph sequence assembly on partially mapped reads.
+	# Perform de Bruijn graph sequence assembly on partially mapped reads? At least see what they're like.
 	bamdict.build(id_queries, refdict)
 	log.info("Finished retrieving top V and J alignments for each query.")
 	num_umis = len(bamdict.get_umis())
@@ -57,6 +58,7 @@ def main(args):
 	log.info("For each UMI, resolving V and J alignment identities "
 	 	"and selecting the most representative CDR3 sequences...")
 	count = 0
+	count_filtered = 0
 	report_interval = max(1, num_umis // 50)
 	for barcode in bamdict.get_barcodes():
 		for umi in barcode.get_umis():
@@ -68,12 +70,17 @@ def main(args):
 				for read in reads_VJ:
 					read.get_cdr3()
 				umi.select_cdr3(reads_VJ)
+			else:
+				count_filtered += 1
 			count += 1
 			if count % report_interval == 0:
 				log.info(f"Processed {count} UMIs ({(count / num_umis):.0%}).")
 
-	log.info("Finished recovering CDR3 sequences for all VJ reads"
+	log.info("Finished recovering CDR3 sequences for all VJ reads "
 		 "and recovered top CDR3 for each UMI.")
+	log.info(f"{count_filtered} BCUMIs were filtered out due to top VJ "
+		"read number and frequency thresholds set by the program's arguments.")
+	log.info(f"Writing the remaining {(count - count_filtered)} BCUMIs to file.")
 	bamdict.write_cdr3_info(worker, args.output_path)
 	log.info("Writing reference info for alignment tiebreaks.")
 	bamdict.write_tiebreaks_alignments(worker, args.output_path)
@@ -88,7 +95,7 @@ if __name__ == "__main__":
 		description=dedent(
 			f"""
 			+{'='*78}+
-			|{'{:^78}'.format('SEQ-WELL TCR RECOVERY - TCRGO?')}|
+			|{'{:^78}'.format('SEQ-WELL TCR RECOVERY - TCRGO')}|
 			+{'='*78}+
 			{indent(__doc__, 3*'	')}
 			"""
@@ -121,7 +128,8 @@ if __name__ == "__main__":
 			"Path to a two-column TSV containing reference names "
 			"and the start V or end J base position. NOTE: If these "
 			"positions are zero-indexed as opposed to one-indexed, "
-			"also specify the --zero-indexed flag!"
+			"also specify the --zero-indexed flag! If not provided, "
+			"program attempts to identify the best ORF and positions."
 	)
 	parser.add_argument(
 		'-z', "--zero-indexed",
@@ -162,16 +170,6 @@ if __name__ == "__main__":
 			"UMIs with less than the minimum number of reads which have recovered CDR3s"
 			"will not have their CDR3 statistics reported (default: %(default)d)."
 	)
-	# TODO: This never happened. Perhaps repurpose for an additional check on the barcode level?
-	# Ask Sarah if that's needed.
-	#parser.add_argument(
-	#	'-s', "--second-pass",
-	#	action="store_true",
-	#	help=
-	#		"After a top VJ combination is found, revisit non-top-VJ-combination reads "
-	#		"to reclaim for CDR3 reconstruction reads which have primary OR high-scoring " 
-	#		"secondary alignments to top V and J."
-	#)
 	parser.add_argument(
 		'-r', "--exclude-relatives",
 		action="store_true",

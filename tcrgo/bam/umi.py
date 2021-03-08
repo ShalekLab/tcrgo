@@ -156,6 +156,15 @@ class UMI(object):
 
 	@log.time
 	def select_cdr3(self, reads_VJ: List[Read]):
+		"""
+		Unique CDR3 sequence counts are tallied, and copied to a new Counter.
+		Either hamming_distance or levenshtein_distance comparisons among 
+		unique sequences are performed to find combinations with distance=1, 
+		both of which have their counts incremented. The chosen distance function
+		varies due to performance reasons (LD cost is exponential). 
+		If there is a tie, then a consensus sequence is greedily built from 
+		the tying sequences (typically only happens for low nReads UMIs)
+		""" 
 		log.verbose(f"UMI {self.sequence}")
 		seq_cdr3s = dict()
 		seq_counts = Counter()

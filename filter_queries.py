@@ -81,13 +81,13 @@ if __name__ == "__main__":
 		help="The verbosity of the log. (default: %(default)s)."
 	)
 	parser.add_argument(
-		'-lt', "--minimum_reads",
+		'-lt', "--minimum-reads",
 		type=int,
 		default=5,
 		help="UMIs with less than the minimum number of reads will be filtered out (default: %(default)d)."
 	)
 	parser.add_argument(
-		'-gt', "--maximum_reads",
+		'-gt', "--maximum-reads",
 		type=int,
 		default=1000,
 		help=

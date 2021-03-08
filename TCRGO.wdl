@@ -3,11 +3,12 @@ version 1.0
 workflow TCRGO {
 	input {
 		String sample_name
-		Array[File] data
+		Array[File] sequence_data
+		
 		Boolean run_alignment = true
 		File fasta
-		File cdr3_positions
-		Int workers = 32
+		File? cdr3_positions
+		Int workers = 16
 
 		String docker = "shaleklab/tcrgo:latest"
 		String zones = "us-central1-a us-central1-b us-central1-c us-central1-f us-east1-b us-east1-c us-east1-d us-west1-a us-west1-b us-west1-c"
@@ -16,7 +17,7 @@ workflow TCRGO {
 	if (run_alignment) {
 		call preprocessing_and_alignment as alignment {
 			input:
-				data = data,
+				data = sequence_data,
 				fasta = fasta,
 				sample_name = sample_name,
 				docker = docker,
@@ -26,14 +27,14 @@ workflow TCRGO {
 	}
 	call filter_queries {
 		input:
-			bam = select_first([alignment.bam_repairedsorted, data[0]]),
+			bam = select_first([alignment.bam_repairedsorted, sequence_data[0]]),
 			workers = workers,
 			docker = docker,
 			zones = zones,
 			preemptible = preemptible
 	}
 	scatter (query_list in filter_queries.query_list) {
-		call reconstruct_tcrs {
+		call recover_cdr3s {
 			input:
 				bam = filter_queries.bam_sorted,
 				fasta = fasta,
@@ -46,8 +47,8 @@ workflow TCRGO {
 	}
 	call summary {
 		input:
-			cdr3_infos = reconstruct_tcrs.cdr3_info,
-			tiebreaks_alignments = reconstruct_tcrs.tiebreaks_alignments,
+			cdr3_infos = recover_cdr3s.cdr3_info,
+			tiebreaks_alignments = recover_cdr3s.tiebreaks_alignments,
 			sample_name = sample_name,
 			docker = docker,
 			zones = zones,
@@ -57,6 +58,8 @@ workflow TCRGO {
 		File? bam_repairedsorted = alignment.bam_repairedsorted
 		File aggregated_cdr3_infos = summary.aggregated_cdr3_info
 		File aggregated_tiebreaks_alignments = summary.aggregated_tiebreaks_alignments
+		File? aggrcollapsed_cdr3_info = summary.aggrcollapsed_cdr3_info
+		File? dgraphs = summary.dgraphs
 	}
 }
 
@@ -86,7 +89,7 @@ task preprocessing_and_alignment {
 			~{sep=' ' data}
 	>>>
 	output {
-		File bam_repairedsorted = "/cromwell_root/out/~{sample_name}_repaired_sorted.bam"
+		File bam_repairedsorted = "/cromwell_root/out/~{sample_name}_repairedsorted.bam"
 	}
 	runtime {
 		docker: docker
@@ -119,15 +122,15 @@ task filter_queries {
 		set -e
 		cd /scripts/
 		python -m filter_queries \
-			--minimum_reads ~{minimum_reads} \
-			--maximum_reads ~{maximum_reads} \
+			--minimum-reads ~{minimum_reads} \
+			--maximum-reads ~{maximum_reads} \
 			--seed ~{seed} \
 			--output-path /cromwell_root/out/ \
 			--workers ~{workers} \
 			~{bam}
 	>>>
 	output {
-		Array[File] query_list = glob("/cromwell_root/out/queries[0-9]*.txt")
+		Array[File]+ query_list = glob("/cromwell_root/out/queries[0-9]*.tsv")
 		File bam_sorted = bam
 	}
 	runtime {
@@ -141,11 +144,13 @@ task filter_queries {
 	}
 }
 
-task reconstruct_tcrs {
+task recover_cdr3s {
 	input {
 		File bam
 		File query_list
-		File cdr3_positions
+		File? cdr3_positions
+		Boolean is_zero_indexed = false
+		Boolean exclude_relatives = false
 		File fasta
 		Float minimum_frequency = 0.3
 		Int minimum_cdr3s = 5
@@ -161,9 +166,11 @@ task reconstruct_tcrs {
 	command <<<
 		set -e
 		cd /scripts/
-		python -m reconstruct_tcrs \
+		python -m recover_cdr3s \
 			--fasta ~{fasta} \
-			--cdr3-positions-file ~{cdr3_positions} \
+			~{"--cdr3-positions-file " + cdr3_positions} \
+			~{true="--zero-indexed" false='' is_zero_indexed} \
+			~{true="--exclude-relatives" false='' exclude_relatives} \
 			--minimum-frequency ~{minimum_frequency} \
 			--minimum-cdr3s ~{minimum_cdr3s} \
 			--output-path /cromwell_root/out/ \
@@ -190,8 +197,11 @@ task summary {
 		Array[File] cdr3_infos
 		Array[File] tiebreaks_alignments
 		String sample_name
+		Boolean collapse = true
+		Int threshold = 10
+		Boolean plot = false
 		Boolean string_index = false
-
+		
 		Int preemptible
 		String zones
 		String docker
@@ -223,14 +233,27 @@ task summary {
 			~{true="--string-index" false='' string_index} \
 			--input-path $output_directory \
 			--output-path $output_directory \
+			~{true="--collapse" false='' collapse} \
+			--threshold ~{threshold} \
+			~{true="--plot" false='' plot} \
 			ALL
 		
 		# Rename the summary files to contain sample_name
-		mv ${output_directory}aggregated_cdr3_info.tsv ${output_directory}~{sample_name}_cdr3_info.tsv
-		mv ${output_directory}aggregated_tiebreaks_alignments.tsv ${output_directory}~{sample_name}_tiebreaks_alignments.tsv
+		mv ${output_directory}aggregated_cdr3_info.tsv \
+			${output_directory}~{sample_name}_cdr3_info.tsv
+		touch ${output_directory}aggregated_tiebreaks_alignments.tsv
+		mv ${output_directory}aggregated_tiebreaks_alignments.tsv \
+			${output_directory}~{sample_name}_tiebreaks_alignments.tsv
+		touch ${output_directory}aggrcollapsed_cdr3_info.tsv
+		mv ${output_directory}aggrcollapsed_cdr3_info.tsv \
+			${output_directory}~{sample_name}_aggrcollapsedcdr3_info.tsv
+		mkdir -p ${output_directory}dgraphs
+		tar -zcf ${output_directory}dgraphs.tar.gz ${output_directory}dgraphs/
 	>>>
 	output {
 		File aggregated_cdr3_info = "/cromwell_root/out/~{sample_name}_cdr3_info.tsv"
+		File? aggrcollapsed_cdr3_info = "/cromwell_root/out/~{sample_name}_aggrcollapsedcdr3_info.tsv"
+		File? dgraphs = "/cromwell_root/out/dgraphs.tar.gz"
 		File aggregated_tiebreaks_alignments = "/cromwell_root/out/~{sample_name}_tiebreaks_alignments.tsv"
 	}
 	runtime {
