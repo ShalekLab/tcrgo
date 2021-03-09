@@ -8,7 +8,7 @@ workflow TCRGO {
 		Boolean run_alignment = true
 		File fasta
 		File? cdr3_positions
-		Int workers = 16
+		Int workers = 8
 
 		String docker = "shaleklab/tcrgo:latest"
 		String zones = "us-central1-a us-central1-b us-central1-c us-central1-f us-east1-b us-east1-c us-east1-d us-west1-a us-west1-b us-west1-c"
@@ -114,7 +114,7 @@ task filter_queries {
 		String zones
 		String docker
 		Int number_cpu_threads = 1
-		Int task_memory_GB = 8
+		Int task_memory_GB = 16
 		String disks = "local-disk 128 HDD"
 		Int boot_disk_size_GB = 10
 	}
@@ -206,7 +206,7 @@ task summary {
 		String zones
 		String docker
 		Int number_cpu_threads = 1
-		Int task_memory_GB = 4
+		Int task_memory_GB = 16
 		String disks = "local-disk 64 HDD"
 		Int boot_disk_size_GB = 10
 	}

@@ -15,8 +15,8 @@ log = Log(name=__name__)
 def main(args):
 	"""
 	Note: `<basename>` is inputted using the `--basename BASENAME` argument.
-	0. Input Data -> Unmapped BAM, starting from any of these substeps:
-		a. Raw BAM
+	0. Input Data -> Unmapped BAM, starting from any of these substeps depending on the input:
+		a. Raw BAM (`<basename>`.bam)
 		b. Single-end FASTQ (`<basename>`.fastq)
 		c. Pair-end FASTQs (`<basename>`_R1.fastq,`<basename>`_TCR.fastq)
 	1. Unmapped BAM (`<basename>`_unmapped.bam) -> aligned and tagged BAM
