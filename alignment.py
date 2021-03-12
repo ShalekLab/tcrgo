@@ -1,20 +1,8 @@
 """
 Alignment and preprocessing via Drop-Seq Tools 2.4.0 and Bowtie2 version 2.4.1
 Requires Samtools and pysam.
-"""
-import tcrgo.dropseq_tools as ds
-import tcrgo.io as io
-import argparse
-from textwrap import dedent, indent
-import os
-import pysam
 
-from tcrgo import Log
-log = Log(name=__name__)
-
-def main(args):
-	"""
-	Note: `<basename>` is inputted using the `--basename BASENAME` argument.
+Note: `<basename>` is inputted using the `--basename BASENAME` argument.
 	0. Input Data -> Unmapped BAM, starting from any of these substeps depending on the input:
 		a. Raw BAM (`<basename>`.bam)
 		b. Single-end FASTQ (`<basename>`.fastq)
@@ -34,7 +22,18 @@ def main(args):
 			i. Repair substitution errors (`<basename>_synthrepaired.bam`)
 			ii. Repair indel errors (`<basename>`_repaired.bam)
 			iii. Sort by coordinates (`<basename>`_repairedsorted.bam)
-	"""
+"""
+import tcrgo.dropseq_tools as ds
+import tcrgo.io as io
+import argparse
+from textwrap import dedent, indent
+import os
+import pysam
+
+from tcrgo import Log
+log = Log(name=__name__)
+
+def main(args):
 	log.init(args.verbosity)
 	log.info("Verifying that Drop-Seq Tools, Picard, and Bowtie2 are all callable...")
 	ds.test_tools(args.dropseq, args.picard, args.aligner)
@@ -149,7 +148,7 @@ if __name__ == "__main__":
 		"data", 
 		type=str,
 		nargs='+',
-		metavar="<BAM|FASTQ or FASTQ_R1,FASTQ_Index-1>",
+		metavar="<BAM|FASTQ or FASTQ_R1 FASTQ_Index-1>",
 		help="Path to single-end BAM/FASTQ or paths (delim. by comma) Read1-index-1 FASTQs"
 	)
 	parser.add_argument(

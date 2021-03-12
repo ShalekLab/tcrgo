@@ -65,7 +65,7 @@ workflow TCRGO {
 
 task preprocessing_and_alignment {
 	input {
-		Array[File] data
+		Array[File] data #TODO: Change to sequence_data
 		File fasta
 		String sample_name
 

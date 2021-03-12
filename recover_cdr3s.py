@@ -138,21 +138,21 @@ if __name__ == "__main__":
 		help=
 			"If this and the CDR3 positions file are specified, "
 			"the positions entered are treated as indices. "
-			"and will not be reduced by 1."
+			"from 0 to length(seq)-1"
 	)
 	# OPTIONAL ARGUMENTS
 	parser.add_argument(
 		'-q', "--query-list",
 		type=str,
 		required=False,
-		help="The path to the query list file to read."
+		help="The path to the query list file, outputted by filter_queries, to read."
 	)
 	parser.add_argument(
 		'-w', "--worker",
 		type=int,
 		metavar="#WORKER",
 		default=1,
-		help="The number ID of the worker which will read queries<W>.txt  (default: %(default)d)."
+		help="The number ID (W) of the worker which will read queries<W>.tsv  (default: %(default)d)."
 	)
 	parser.add_argument(
 		'-mf', "--minimum-frequency",
