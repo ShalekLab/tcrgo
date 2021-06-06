@@ -210,7 +210,7 @@ if __name__ == "__main__":
 			"against the reference FASTA. (default: %(default)s )."
 	)
 	parser.add_argument(
-		'-f', "--filter-barcodes",
+		'-t', "--filter-barcodes",
 		action="store_true",
 		required=False,
 		help=
