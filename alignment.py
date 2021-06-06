@@ -36,6 +36,7 @@ log = Log(name=__name__)
 def main(args):
 	log.init(args.verbosity)
 	log.info("Verifying that Drop-Seq Tools, Picard, and Bowtie2 are all callable...")
+	log.info("Testing file version 1")
 	ds.test_tools(args.dropseq, args.picard, args.aligner)
 
 	if not os.path.exists(args.output_path):
