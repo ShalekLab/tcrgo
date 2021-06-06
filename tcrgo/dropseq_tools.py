@@ -245,7 +245,7 @@ def bowtie2(bam_trimmed: str, fasta: str, sam_aligned: str) -> str:
 	execute(command)
 	command = \
 		f"""
-		bowtie2 -a --very-sensitive-local --norc \
+		bowtie2 -a --very-sensitive-local  \
 			-x {index_prefix} \
 			-p 8 \
 			-b {bam_sorted} \
