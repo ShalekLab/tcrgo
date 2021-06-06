@@ -85,6 +85,7 @@ def main(args):
 	if not os.path.isfile(bam_idtagged):
 		log.info("Tagging BAM with cell barcode and UMI sequences...")
 		ds.tag_identifiers_bam(args.dropseq, bam_unmapped, bam_idtagged)
+	log.info("Filter barcode option = "+str(args.filter_barcodes))
 	if args.filter_barcodes:
 		if not os.path.isfile(bam_filtered):
 			log.info("Filtering reads with low quality bases in cell barcode and UMI.")
