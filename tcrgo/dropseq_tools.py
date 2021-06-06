@@ -395,7 +395,7 @@ def fauxtag_exons(bam_merged: str, bam_exontagged: str) -> str:
 		with pysam.AlignmentFile(bam_exontagged, 'wb', template=untagged) as tagged:
 			exon_tags = [("gf", "CODING", "Z"), ("gn", "UKN", "Z"), ("gs", "+", "Z")]
 			for query in untagged:
-				if query.is_unmapped or query.is_reverse:
+				if query.is_unmapped: #or query.is_reverse:
 					continue
 				if "TRA" in query.reference_name:
 					exon_tags[1] = ("gn", "TRA", "Z")
