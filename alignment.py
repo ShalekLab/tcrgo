@@ -85,13 +85,20 @@ def main(args):
 	if not os.path.isfile(bam_idtagged):
 		log.info("Tagging BAM with cell barcode and UMI sequences...")
 		ds.tag_identifiers_bam(args.dropseq, bam_unmapped, bam_idtagged)
-	if not os.path.isfile(bam_filtered):
-		log.info("Filtering reads with low quality bases in cell barcode and UMI.")
-		ds.filter_bam(args.dropseq, bam_idtagged, bam_filtered)
-	if not os.path.isfile(bam_trimmed):
-		log.info("Trimming adapter and poly A sequences...")
-		#ds.trim_bam(args.dropseq, bam_idtagged, bam_trimmed)
-		ds.trim_bam(args.dropseq, bam_filtered, bam_trimmed)
+	if args.filter_barcodes:
+		if not os.path.isfile(bam_filtered):
+			log.info("Filtering reads with low quality bases in cell barcode and UMI.")
+			ds.filter_bam(args.dropseq, bam_idtagged, bam_filtered)
+		if not os.path.isfile(bam_trimmed):
+			log.info("Trimming adapter and poly A sequences...")
+			#ds.trim_bam(args.dropseq, bam_idtagged, bam_trimmed)
+			ds.trim_bam(args.dropseq, bam_filtered, bam_trimmed)
+	else:
+		if not os.path.isfile(bam_trimmed):
+			log.info("Trimming adapter and poly A sequences...")
+			ds.trim_bam(args.dropseq, bam_idtagged, bam_trimmed)
+			#ds.trim_bam(args.dropseq, bam_filtered, bam_trimmed)
+
 	if not os.path.isfile(sam_aligned):
 		log.info(f"Aligning BAM using {args.aligner}")
 		if args.aligner == "bowtie2":
@@ -201,5 +208,13 @@ if __name__ == "__main__":
 			"The aligner the program will choose for aligning the sequence data "
 			"against the reference FASTA. (default: %(default)s )."
 	)
+	parser.add_argument(
+		'-f', "--filter-barcodes",
+		action="store_true",
+		required=False,
+		help=
+			"Determines if the filter barcode based on quality step should be run. "
+	)
+
 	args = parser.parse_args()
 	main(args)

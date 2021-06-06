@@ -76,6 +76,7 @@ task preprocessing_and_alignment {
 		Int task_memory_GB = 16
 		String disks = "local-disk 256 HDD"
 		Int boot_disk_size_GB = 15
+		Boolean filter_barcodes = true
 	}
 	command <<<
 		set -e
@@ -86,6 +87,7 @@ task preprocessing_and_alignment {
 			--picard /software/dropseq/3rdParty/picard/picard.jar \
 			--basename ~{sample_name} \
 			--output-path /cromwell_root/out/ \
+			~{true="--filter-barcodes" false='' filter_barcodes} \
 			~{sep=' ' data}
 	>>>
 	output {
