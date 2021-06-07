@@ -73,8 +73,47 @@ def transform_read_data(fastq_singleend: str, sample_name: str, fastq_barcode: s
 
 			r1.write('@'*len(ids) + '\n')
 			tcr.write(entry.quality + '\n')
+        #TODO: test this with just the line below
+	#rev_comp_one_fastq(fastq_singleend,sample_name,fastq_biological,output_path,fastq_barcode)
 	return fastq_barcode, fastq_biological
+def rev_comp_one_fastq( fastq_in:str,  sample_name: str, fastq_out: str,
+	output_path: str, fastq_idx_out: str = "") -> Tuple[str, str]:
+	"""Based on the original Bash script, `transform_read_data.sh`."""
+	table = str.maketrans("ACTG", "TGAC") # {65: 84, 67: 71, 84: 65, 71: 67}
+	if fastq_idx_out == "":
+		save_index = False
+	else:
+		save_index = True
+	with pysam.FastxFile(fastq_in) as fq, \
+		open(fastq_out, 'w') as tcr:
+		if save_index:
+			r1 = open(fastq_idx_out, 'w')
+		for entry in fq:
+			if save_index:
+			    qname, trailing = entry.name.split('#')
+			    qname1 = qname + "#/1\n"
+			    qname2 = qname + "#/2\n"
+			    r1.write('@' + qname1)
+			else:
+                            qname2 = entry.name + "\n"
+			tcr.write('@' + qname2)
+			
+			if save_index:
+			    ids = re.search(r"[AGCTN]*", trailing)[0]
+			    r1.write(ids + '\n')
+			    r1.write('+' + qname1)
+			    r1.write('@'*len(ids) + '\n')
+			    r1.close()
+			revcomp = entry.sequence.translate(table)[::-1] # 5'-3' cDNA => 3'->5' RNA
+			tcr.write(revcomp + '\n')
+			tcr.write('+' + qname2)
 
+			tcr.write(entry.quality + '\n')
+	return fastq_out, fastq_idx_out
+def rev_comp_fastqs( fastq_barcode_in:str, fastq_biological_in:str, sample_name: str, fastq_barcode: str,
+	fastq_biological: str, output_path: str) -> Tuple[str, str]:
+	rev_comp_one_fastq(fastq_barcode_in, sample_name, fastq_barcode, output_path)
+	rev_comp_one_fastq(fastq_biological_in, sample_name, fastq_biological, output_path)
 def fastq_to_bam(picard_jar: str, fastq_barcode: str, fastq_biological: str, bam_unmapped: str, sample_name: str) -> str:
 	"""Convert FASTQ R1 and R2 to unmapped BAM using Picard's FastqToSam"""
 	command = \
@@ -161,7 +200,7 @@ def filter_bam(dropseq_jar: str, bam_tagged: str, bam_filtered: str):
 	)
 	# FILTER_PCR_DUPES=true ? what are pcr dupes anyways versus reads of same UMI?
 	# SUM_MATCHING_BASES=int 
-	# 	Retain reads that have at least this many M bases total in the cigar string. 
+	#	Retain reads that have at least this many M bases total in the cigar string. 
 	#	This sums all the M's in the cigar string.  Default value: null. 
 
 	return bam_filtered
@@ -395,7 +434,7 @@ def fauxtag_exons(bam_merged: str, bam_exontagged: str) -> str:
 		with pysam.AlignmentFile(bam_exontagged, 'wb', template=untagged) as tagged:
 			exon_tags = [("gf", "CODING", "Z"), ("gn", "UKN", "Z"), ("gs", "+", "Z")]
 			for query in untagged:
-				if query.is_unmapped or query.is_reverse:
+				if query.is_unmapped:
 					continue
 				if "TRA" in query.reference_name:
 					exon_tags[1] = ("gn", "TRA", "Z")
