@@ -36,7 +36,7 @@ log = Log(name=__name__)
 def main(args):
 	log.init(args.verbosity)
 	log.info("Verifying that Drop-Seq Tools, Picard, and Bowtie2 are all callable...")
-	log.info("Testing file version 1")
+	log.info("Testing file version 2")
 	ds.test_tools(args.dropseq, args.picard, args.aligner)
 
 	if not os.path.exists(args.output_path):
@@ -47,8 +47,8 @@ def main(args):
 	# Files are produced in this order
 	basename = os.path.join(args.output_path, args.basename)
 	fastq_singleend = basename + ".fastq"
-	fastq_barcode = basename + "_R1.fastq"
-	fastq_biological = basename + "_TCR.fastq"
+	fastq_barcode = basename + "_R1_out.fastq"
+	fastq_biological = basename + "_TCR_out.fastq"
 	bam_unmapped = basename + "_unmapped.bam"
 	bam_idtagged = basename + "_idtagged.bam"
 	bam_filtered = basename + "_filtered.bam"
