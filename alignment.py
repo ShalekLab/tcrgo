@@ -80,9 +80,12 @@ def main(args):
 	elif is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological):
 		log.info("Transforming Read1-index-1 FASTQ to Read1 and Read2 FASTQs")
 		ds.transform_read_data(fastq_singleend, args.basename, fastq_barcode, fastq_biological, args.output_path)
-	elif not is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological):
+	elif not is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological) and not args.not_reverse_complement:
 		log.info("Transforming Read1 FASTQ and  Read2 FASTQ to their reverse complements")
 		ds.rev_comp_fastqs(fastq_barcode_in, fastq_biological_in,args.basename, fastq_barcode, fastq_biological, args.output_path)
+	if args.not_reverse_complement:
+		fastq_barcode = fastq_barcode_in
+		fastq_biological=fastq_biological_in
 	if not os.path.isfile(bam_unmapped):
 		log.info("Converting R1 and R2 FASTQs to a single-end BAM")
 		ds.fastq_to_bam(args.picard, fastq_barcode, fastq_biological, bam_unmapped, args.basename)
@@ -219,6 +222,13 @@ if __name__ == "__main__":
 		required=False,
 		help=
 			"Determines if the filter barcode based on quality step should be run. "
+	)
+	parser.add_argument(
+		'-r', "--not-reverse-complement",
+		action="store_true",
+		required=False,
+		help=
+			"Determines if the reverse complement of the input fastqs is taken prior to alignment or not. Default is to take reverse complement. "
 	)
 
 	args = parser.parse_args()
