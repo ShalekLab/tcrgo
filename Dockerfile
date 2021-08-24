@@ -21,7 +21,7 @@ RUN apt-get clean && apt-get -qq update && apt-get -qq -y install curl unzip bzi
 	&& conda config --add channels conda-forge --add channels bioconda \
 	&& conda install -y \
 		samtools=1.3.1 \
-		bowtie2=2.4.1 \
+		bowtie2=2.4.4 \
 		pysam=0.16.0.1 \
 		pandas=1.2.1 \
 		python-igraph=0.8.3 \

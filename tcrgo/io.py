@@ -92,7 +92,7 @@ def parse_queries(bam: BAM, barcode_tag: str="CR", umi_tag: str="RX") -> Tuple[S
 			continue
 		if alignment.is_reverse:
 			count_reverse += 1
-			continue
+			#continue
 		if "TRAV" in alignment.reference_name or "TRBV" in alignment.reference_name:
 			if alignment.reference_end >= bam.get_reference_length(alignment.reference_name) - 20:
 				queries_V.add(id_query)
