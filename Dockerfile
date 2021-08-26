@@ -13,6 +13,8 @@ RUN apt-get clean && apt-get -qq update && apt-get -qq -y install curl unzip bzi
 	&& rm -rf /tmp/miniconda.sh \
 	&& conda install -y python=3.8.5 \
 	&& conda update conda \
+	&& apt-get update \
+	&& apt-get install libtbb2 \
 	&& apt-get -qq -y remove curl bzip2 \
 	&& apt-get -qq -y autoremove \
 	&& apt-get autoclean \
@@ -25,7 +27,8 @@ RUN apt-get clean && apt-get -qq update && apt-get -qq -y install curl unzip bzi
 		pysam=0.16.0.1 \
 		pandas=1.2.1 \
 		python-igraph=0.8.3 \
-		biopython=1.77
+		biopython=1.77 
+	
 
 COPY *.py /scripts/
 COPY tcrgo /scripts/tcrgo
