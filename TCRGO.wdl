@@ -77,6 +77,7 @@ task preprocessing_and_alignment {
 		String disks = "local-disk 256 HDD"
 		Int boot_disk_size_GB = 15
 		Boolean filter_barcodes = true
+		Boolean not_reverse_complement = false
 	}
 	command <<<
 		set -e
@@ -88,7 +89,8 @@ task preprocessing_and_alignment {
 			--basename ~{sample_name} \
 			--output-path /cromwell_root/out/ \
 			~{true="--filter-barcodes" false='' filter_barcodes} \
-			~{sep=' ' data}
+			~{sep=' ' data} \
+			~{true="--not-reverse-complement" false='' not_reverse_complement}
 	>>>
 	output {
 		File bam_repairedsorted = "/cromwell_root/out/~{sample_name}_repairedsorted.bam"
