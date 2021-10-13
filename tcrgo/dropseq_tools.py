@@ -462,6 +462,7 @@ def bead_substitution_errors(dropseq_jar: str, bam: str, bam_out: str, min_umis_
 			MIN_UMIS_PER_CELL={min_umis_per_cell} \
 			READ_MQ=10 \
 			FREQ_COMMON_SUBSTITUTION=0.8 \
+			UMI_BIAS_THRESHOLD=1.0 \
 			CELL_BARCODE_TAG=CR \
 			OUT_CELL_BARCODE_TAG=CR \
 			MOLECULAR_BARCODE_TAG=RX \
@@ -526,6 +527,8 @@ def repair_bam(dropseq_jar: str, bam_exontagged: str, bam_repaired: str, min_umi
 			INPUT={bam_exontagged} \
 			OUTPUT={bam_subrepaired} \
 			MIN_UMIS_PER_CELL={min_umis_per_cell} \
+			FREQ_COMMON_SUBSTITUTION=0.8 \
+			UMI_BIAS_THRESHOLD=1.0 \
 			READ_MQ=10 \
 			CELL_BARCODE_TAG=CR \
 			MOLECULAR_BARCODE_TAG=RX \
