@@ -131,7 +131,7 @@ def main(args):
 		log.info("Repairing insertion-deletion errors in the cell barcode sequences.")
 		#ds.repair_bam(args.dropseq, bam_exontagged, bam_repaired, min_umis_per_cell=1)
 		ds.bead_synthesis_errors(args.dropseq, bam_exontagged, bam_synthrepaired, min_umis_per_cell=1)
-		log.info("Repairing substitution errors in the cell barcode sequences and collapsing barcodes.")
+		log.info("Repairing substitution errors in the cell barcode sequences and collapsing barcodes. New filter params")
 		ds.bead_substitution_errors(args.dropseq, bam_synthrepaired, bam_repaired, min_umis_per_cell=1)
 		log.info("Sorting bam by coordinate, outputting final BAM.")
 		pysam.sort("-o", bam_repairedsorted, bam_repaired)
