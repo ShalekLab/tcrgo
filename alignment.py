@@ -81,8 +81,9 @@ def main(args):
 		log.info("Transforming Read1-index-1 FASTQ to Read1 and Read2 FASTQs")
 		ds.transform_read_data(fastq_singleend, args.basename, fastq_barcode, fastq_biological, args.output_path)
 	elif not is_fastq_singleend and not os.path.isfile(fastq_barcode) and not os.path.isfile(fastq_biological) and not args.not_reverse_complement:
-		log.info("Transforming Read1 FASTQ and  Read2 FASTQ to their reverse complements")
+		log.info("Transforming TCR FASTQ to its reverse complement")
 		ds.rev_comp_fastqs(fastq_barcode_in, fastq_biological_in,args.basename, fastq_barcode, fastq_biological, args.output_path)
+		fastq_barcode = fastq_barcode_in
 	if args.not_reverse_complement:
 		fastq_barcode = fastq_barcode_in
 		fastq_biological=fastq_biological_in
